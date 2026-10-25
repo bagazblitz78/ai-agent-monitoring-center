@@ -173,6 +173,31 @@ def test_seq_autoincrements_across_two_inserts(app_home):
     assert [event.seq for event in events] == [1, 2]
 
 
+def test_seq_is_strictly_monotonic_after_deleting_the_newest_row(app_home):
+    """Deleting the newest event must not let SQLite recycle its ``seq``.
+
+    The SSE resume cursor ``since_seq`` is meaningless if a deleted row's id
+    comes back for a later event, so ``activity_events`` is AUTOINCREMENTed
+    (model ``sqlite_autoincrement=True`` and the same kwarg in migration 0003).
+    """
+    with db.new_session() as session:
+        for index in range(1, 4):
+            session.add(ActivityEvent(**{**EVENT_KWARGS, "event_uid": f"evt-{index}"}))
+        session.commit()
+        newest = session.query(ActivityEvent).order_by(ActivityEvent.seq.desc()).first()
+        assert newest.seq == 3
+        session.delete(newest)
+        session.commit()
+
+    with db.new_session() as session:
+        session.add(ActivityEvent(**{**EVENT_KWARGS, "event_uid": "evt-4"}))
+        session.commit()
+        seqs = [event.seq for event in session.query(ActivityEvent).order_by(ActivityEvent.seq)]
+
+    # 3 is burned, not reused: the fresh event gets seq 4, never 3 or 1.
+    assert seqs == [1, 2, 4]
+
+
 def test_duplicate_event_uid_rejected(app_home):
     with db.new_session() as session:
         session.add(ActivityEvent(**EVENT_KWARGS))

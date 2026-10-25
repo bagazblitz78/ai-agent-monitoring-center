@@ -135,12 +135,14 @@ def test_corrupt_token_file_regenerates(tmp_path, monkeypatch):
 
 
 def test_auth_mode_off_bypasses_check(monkeypatch):
-    from app.main import create_app
-
     with tempfile.TemporaryDirectory() as home:
         monkeypatch.setenv("AGENTSCOPE_HOME", home)
         monkeypatch.setenv("AGENTSCOPE_AUTH_MODE", "off")
         monkeypatch.setattr(config, "SETTINGS", None)
+        # Imported after the env is patched: ``app.main`` builds a module-level
+        # ``app`` on first import, which must land in the temp home.
+        from app.main import create_app
+
         client = TestClient(create_app(), raise_server_exceptions=False)
 
         without_cookie = client.get("/api/v1/session")

@@ -91,8 +91,13 @@ def _session_status(request: Request) -> dict:
     )
 
 
-def _token_exchange(request: Request) -> Response:
-    """Trade ``?t=<token>`` for the session cookie, then redirect the secret away."""
+def token_exchange(request: Request) -> Response:
+    """Trade ``?t=<token>`` for the session cookie, then redirect the secret away.
+
+    Registered by :func:`app.main.create_app` as part of ``GET /`` (together
+    with the frontend fallback), because Task 9 takes ownership of the root
+    route once it serves static files.
+    """
     provided = request.query_params.get("t", "")
     expected = request.app.state.session_token
     if not _matches(provided, expected):
@@ -110,15 +115,15 @@ def _token_exchange(request: Request) -> Response:
 
 
 def install_auth(app: FastAPI, token: str) -> None:
-    """Store the session token, guard the API router and register the auth routes.
+    """Store the session token and guard the API router.
 
     Creates ``app.state.api_router`` (empty apart from the session probe) so
-    later tasks mount their routers onto it — every route added there inherits
-    ``require_session``. ``GET /`` (the token exchange) is registered directly
-    on the app because it must stay reachable without a cookie.
+    feature tasks mount their routers onto it — every route added there
+    inherits ``require_session``. ``GET /`` (the token exchange plus the
+    frontend) is registered by ``create_app``, not here, so the root route
+    stays a single assembly-level concern.
     """
     app.state.session_token = token
     router = APIRouter(prefix="", dependencies=[Depends(require_session)])
     router.add_api_route("/api/v1/session", _session_status, methods=["GET"])
     app.state.api_router = router
-    app.add_api_route("/", _token_exchange, methods=["GET"])

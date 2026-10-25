@@ -93,6 +93,7 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(["session_id"], ["agent_sessions.id"], ondelete="SET NULL"),
         sa.ForeignKeyConstraint(["task_id"], ["tasks.id"], ondelete="SET NULL"),
         sa.PrimaryKeyConstraint("seq"),
+        sqlite_autoincrement=True,
     )
     with op.batch_alter_table("activity_events", schema=None) as batch_op:
         batch_op.create_index(batch_op.f("ix_activity_events_agent_id"), ["agent_id"], unique=False)

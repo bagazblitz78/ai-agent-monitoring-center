@@ -14,6 +14,9 @@ class ActivityEvent(Base):
         Index("ix_activity_events_project_id_ts", "project_id", "ts"),
         Index("ix_activity_events_agent_id_ts", "agent_id", "ts"),
         Index("ix_activity_events_type_ts", "type", "ts"),
+        # AUTOINCREMENT: seq is the SSE resume cursor, so a deleted row's id
+        # must never be recycled for a later event.
+        {"sqlite_autoincrement": True},
     )
 
     seq: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)

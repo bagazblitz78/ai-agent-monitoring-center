@@ -112,6 +112,24 @@ def test_api_error_status_mapping():
         assert exc.message
 
 
+def test_api_error_envelope_from_route(client):
+    from app.errors import NotFound
+
+    @client.app.get("/_probe_not_found")
+    async def probe_not_found() -> None:
+        raise NotFound("No such widget.")
+
+    r = client.get("/_probe_not_found")
+
+    assert r.status_code == 404
+    error = r.json()["error"]
+    assert error["code"] == "not_found"
+    assert error["message"] == "No such widget."
+    assert error["details"] == []
+    assert len(error["request_id"]) == 32
+    assert r.headers["X-Request-Id"] == error["request_id"]
+
+
 def test_ok_and_paged_build_success_envelopes():
     from app.schemas.common import ok, paged
 

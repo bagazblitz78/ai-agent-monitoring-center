@@ -43,10 +43,12 @@ def patch_settings(payload: SettingsPatch, session: DbSession) -> dict[str, Any]
 def install_settings(router: APIRouter) -> None:
     """Register both settings routes on the guarded API router.
 
-    The routes are added directly instead of through ``include_router``
-    because ``add_api_route`` merges the router's ``require_session``
-    dependency into each route, which the security sweep asserts on every
-    ``/api/v1/*`` route.
+    The routes are registered straight onto the shared router with
+    ``add_api_route`` — there is only one pair of sibling routes, so creating a
+    child router just to ``include_router`` it adds an indirection without
+    changing behaviour: FastAPI merges the router's ``require_session``
+    dependency into every route either way, and the security sweep resolves
+    dependencies through both registration styles.
     """
     router.add_api_route("/api/v1/settings", list_settings, methods=["GET"])
     router.add_api_route("/api/v1/settings", patch_settings, methods=["PATCH"])

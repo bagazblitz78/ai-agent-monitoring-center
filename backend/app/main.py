@@ -16,6 +16,7 @@ from app.api.health import router as health_router
 from app.api.settings import install_settings
 from app.api.stream import install_stream
 from app.config import resolve_paths, settings_singleton
+from app.engine.hub import hub as engine_hub
 from app.errors import install_error_handlers
 from app.middleware import RequestContextMiddleware
 from app.schemas.common import ok
@@ -120,6 +121,9 @@ def create_app() -> FastAPI:
     app = FastAPI(title=settings.app_name, version=settings.version)
     app.add_middleware(RequestContextMiddleware)
     install_error_handlers(app)
+    # The hub the SSE stream fans messages out to, exposed on app.state so the
+    # health probe can report its live subscriber count.
+    app.state.hub = engine_hub
     install_auth(app, load_or_create_token(resolve_paths(settings)))
     # The root route: token exchange when ?t= is present, frontend otherwise.
     app.add_api_route("/", _root, methods=["GET"])

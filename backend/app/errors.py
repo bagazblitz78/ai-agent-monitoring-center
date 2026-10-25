@@ -80,7 +80,9 @@ class Forbidden(ApiError):
 
 
 class ValidationFailed(ApiError):
-    code = "validation_failed"
+    # Same code the RequestValidationError handler emits, so a 422 raised here
+    # and a 422 from FastAPI body/query parsing are indistinguishable to clients.
+    code = "validation_error"
     status = 422
     default_message = "Request validation failed."
 

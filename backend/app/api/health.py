@@ -14,7 +14,7 @@ from typing import Any
 from app.config import resolve_paths, settings_singleton
 from app.db import new_session
 from app.schemas.common import ok
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy import inspect as sa_inspect
 from sqlalchemy import text
@@ -54,8 +54,21 @@ def _database_status() -> dict[str, Any]:
     return report
 
 
+def _sse_clients(request: Request) -> int:
+    """Live SSE subscriber count from the ``EventHub`` on ``app.state.hub``.
+
+    ``create_app`` attaches the hub the SSE stream subscribes to, so the value
+    tracks actual connected streams; without a hub (e.g. a bare test app) the
+    report degrades to 0 rather than failing the probe.
+    """
+    hub = getattr(getattr(request.app, "state", None), "hub", None)
+    if hub is None:
+        return 0
+    return int(hub.subscriber_count())
+
+
 @router.get("/api/v1/health")
-def health() -> JSONResponse:
+def health(request: Request) -> JSONResponse:
     """Report liveness without authentication; degraded checks still return 200."""
     database = _database_status()
     return JSONResponse(
@@ -65,8 +78,14 @@ def health() -> JSONResponse:
                 "version": settings_singleton().version,
                 "database": database,
                 "uptime_seconds": time.monotonic() - _STARTED_AT,
-                # Static until Task 9 ships the EventHub, which then backs these.
-                "engine": {"queue_depth": 0, "events_processed": 0, "sse_clients": 0},
+                # ``sse_clients`` is read live from the hub; ``queue_depth`` and
+                # ``events_processed`` are engine counters nothing tracks yet,
+                # so they stay at their zero defaults.
+                "engine": {
+                    "queue_depth": 0,
+                    "events_processed": 0,
+                    "sse_clients": _sse_clients(request),
+                },
             }
         )
     )

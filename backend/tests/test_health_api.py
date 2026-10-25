@@ -39,7 +39,38 @@ def test_health_is_unauthenticated_and_reports_exact_shape(fresh_db):
 
     assert isinstance(data["uptime_seconds"], float)
     assert data["uptime_seconds"] >= 0
-    assert data["engine"] == {"queue_depth": 0, "events_processed": 0, "sse_clients": 0}
+    engine = data["engine"]
+    assert set(engine) == {"queue_depth", "events_processed", "sse_clients"}
+    assert engine["queue_depth"] == 0 and engine["events_processed"] == 0
+    # Live value from the hub attached by create_app; an int >= 0 either way.
+    assert isinstance(engine["sse_clients"], int)
+    assert engine["sse_clients"] >= 0
+
+
+def test_health_sse_clients_reflect_attached_hub(fresh_db):
+    """With a hub on ``app.state`` the probe reports its live subscriber count."""
+    from app.engine.hub import EventHub
+
+    fresh_db.app.state.hub = EventHub()
+
+    assert fresh_db.get("/api/v1/health").json()["data"]["engine"]["sse_clients"] == 0
+
+    queue = fresh_db.app.state.hub.subscribe()
+    try:
+        r = fresh_db.get("/api/v1/health")
+        assert r.json()["data"]["engine"]["sse_clients"] == 1
+    finally:
+        fresh_db.app.state.hub.unsubscribe(queue)
+
+
+def test_health_sse_clients_zero_when_no_hub_is_attached(fresh_db):
+    """A bare app without a hub degrades the count to 0 instead of failing."""
+    del fresh_db.app.state.hub
+
+    r = fresh_db.get("/api/v1/health")
+
+    assert r.status_code == 200
+    assert r.json()["data"]["engine"]["sse_clients"] == 0
 
 
 def test_health_reports_alembic_schema_version(fresh_db):

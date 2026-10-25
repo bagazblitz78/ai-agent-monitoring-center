@@ -83,6 +83,7 @@ def test_500_includes_traceback_when_debug(client, monkeypatch):
 
 def test_api_error_status_mapping():
     from app.errors import (
+        _CODE_BY_STATUS,
         ApiError,
         Conflict,
         Forbidden,
@@ -98,7 +99,7 @@ def test_api_error_status_mapping():
         (NotFound, 404, "not_found"),
         (Unauthorized, 401, "unauthorized"),
         (Forbidden, 403, "forbidden"),
-        (ValidationFailed, 422, "validation_failed"),
+        (ValidationFailed, 422, "validation_error"),
         (Conflict, 409, "conflict"),
         (RateLimited, 429, "rate_limited"),
         (PayloadTooLarge, 413, "payload_too_large"),
@@ -110,6 +111,39 @@ def test_api_error_status_mapping():
         assert exc.code == code
         assert isinstance(exc.details, list)
         assert exc.message
+
+    # Every non-500 default status renders the same code the plain
+    # HTTPException path maps that status to — checked over all subclasses,
+    # not just the enumerated cases, so a new error class cannot drift.
+    for cls in ApiError.__subclasses__():
+        if cls.status != 500:
+            assert cls.code == _CODE_BY_STATUS[cls.status], cls.__name__
+
+
+def test_422_from_real_endpoint_uses_validation_error(client, session):
+    """A 422 from body validation on a guarded route carries the same
+    ``validation_error`` code as a ``ValidationFailed`` raised in code."""
+    r = client.patch("/api/v1/settings", json={"values": {}})  # empty map: min_length=1
+
+    assert r.status_code == 422
+    error = r.json()["error"]
+    assert error["code"] == "validation_error"
+    assert isinstance(error["details"], list) and error["details"]
+    assert len(error["request_id"]) == 32
+
+
+def test_raised_validation_failed_uses_same_code(client):
+    """A raised ``ValidationFailed`` and FastAPI's own 422 agree on the code."""
+    from app.errors import ValidationFailed
+
+    @client.app.get("/_probe_validation_failed")
+    async def probe_validation_failed() -> None:
+        raise ValidationFailed("Bad payload.")
+
+    r = client.get("/_probe_validation_failed")
+
+    assert r.status_code == 422
+    assert r.json()["error"]["code"] == "validation_error"
 
 
 def test_api_error_envelope_from_route(client):

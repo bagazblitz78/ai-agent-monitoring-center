@@ -116,8 +116,12 @@ def test_upgrade_head_creates_all_tables(upgraded_home):
             "agents",
             "agent_sessions",
             "alembic_version",
+            "milestone_dependencies",
+            "milestones",
             "projects",
             "settings",
+            "task_dependencies",
+            "tasks",
         }
         for table_name, expected in EXPECTED_COLUMNS.items():
             actual = {column["name"] for column in inspector.get_columns(table_name)}
@@ -142,7 +146,7 @@ def test_upgrade_head_creates_all_tables(upgraded_home):
 
         with engine.connect() as connection:
             version = connection.exec_driver_sql("SELECT version_num FROM alembic_version").scalar()
-        assert version == "0001"
+        assert version == "0002"
     finally:
         engine.dispose()
 

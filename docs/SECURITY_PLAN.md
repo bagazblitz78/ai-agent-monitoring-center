@@ -54,7 +54,7 @@ Non-goals: defending against an attacker with the user's own OS privileges; encr
 2. Startup prints and (if enabled) opens `http://127.0.0.1:8787/?t=<token>`; the first request exchanges `t` for the `HttpOnly` cookie and the query string is removed via redirect.
 3. Every API request validates: cookie present → constant-time compare against the current token; `Host` allowed; `Origin` allowed when present; `X-AgentScope-Req` present for mutations; rate limit not exceeded.
 4. Token rotation: `POST /api/v1/settings/rotate-token` (requires current token) → all sessions invalidated. Stale `session.token` file from a previous run is regenerated on start.
-5. Dev mode may set `AGENTSCOPE_AUTH=off` to skip the token (still loopback-only) — documented as dev-only and never the default.
+5. Dev mode may set `AGENTSCOPE_AUTH_MODE=off` to skip the token (still loopback-only) — documented as dev-only and never the default. (Corrected 2026-10-26: the setting is `Settings.auth_mode` with the `AGENTSCOPE_` env prefix, so the variable is `AGENTSCOPE_AUTH_MODE`.)
 
 ## 4. Untrusted Input Handling
 

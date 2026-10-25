@@ -9,6 +9,7 @@ import pytest
 from app import config, db
 from app.models import Agent, AgentSession, Base, Project
 from app.models.base import utc_now
+from sqlalchemy import inspect
 from sqlalchemy.exc import IntegrityError
 
 PROJECT_KWARGS = {
@@ -121,6 +122,41 @@ def test_new_agent_and_session_have_no_activity_yet(app_home):
         assert agent_session.external_key is None
         assert agent_session.ended_at is None
         assert agent_session.last_heartbeat_at is None
+
+
+def test_agent_and_session_construct_with_required_fields_only(app_home):
+    with db.new_session() as session:
+        project = Project(**PROJECT_KWARGS)
+        session.add(project)
+        session.flush()
+
+        agent = Agent(project_id=project.id, name="minimal")
+        session.add(agent)
+        session.flush()
+
+        agent_session = AgentSession(agent_id=agent.id, project_id=project.id)
+        session.add(agent_session)
+        session.commit()
+
+        assert agent.adapter == "generic_process"
+        assert agent.provider == "other"
+        assert agent.match_kind == "none"
+        assert agent.status == "unknown"
+        assert agent.status_source == "unknown"
+
+        assert agent_session.status == "running"
+        started_at = agent_session.started_at
+        assert re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z", started_at)
+        assert agent_session.heartbeat_interval_s == 30
+        assert agent_session.source == "reported"
+        assert agent_session.metadata_json == "{}"
+
+
+def test_agent_sessions_project_id_is_indexed(app_home):
+    inspector = inspect(db.engine)
+    assert "ix_agent_sessions_project_id" in {
+        index["name"] for index in inspector.get_indexes("agent_sessions")
+    }
 
 
 def test_non_git_project_has_null_branch(app_home):

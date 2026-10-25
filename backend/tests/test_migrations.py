@@ -113,15 +113,22 @@ def test_upgrade_head_creates_all_tables(upgraded_home):
     try:
         inspector = inspect(engine)
         assert set(inspector.get_table_names()) == {
+            "activity_events",
             "agents",
             "agent_sessions",
             "alembic_version",
+            "file_changes",
+            "git_commits",
+            "log_entries",
             "milestone_dependencies",
             "milestones",
+            "notifications",
+            "process_snapshots",
             "projects",
             "settings",
             "task_dependencies",
             "tasks",
+            "verification_runs",
         }
         for table_name, expected in EXPECTED_COLUMNS.items():
             actual = {column["name"] for column in inspector.get_columns(table_name)}
@@ -129,6 +136,9 @@ def test_upgrade_head_creates_all_tables(upgraded_home):
 
         assert "ix_projects_path_key" in {ix["name"] for ix in inspector.get_indexes("projects")}
         assert "ix_agents_project_id" in {ix["name"] for ix in inspector.get_indexes("agents")}
+        assert "ix_agent_sessions_project_id" in {
+            ix["name"] for ix in inspector.get_indexes("agent_sessions")
+        }
 
         project_uniques = inspector.get_unique_constraints("projects")
         assert {"path"} in [set(c["column_names"]) for c in project_uniques]
@@ -146,7 +156,7 @@ def test_upgrade_head_creates_all_tables(upgraded_home):
 
         with engine.connect() as connection:
             version = connection.exec_driver_sql("SELECT version_num FROM alembic_version").scalar()
-        assert version == "0002"
+        assert version == "0003"
     finally:
         engine.dispose()
 

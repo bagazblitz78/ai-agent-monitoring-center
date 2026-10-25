@@ -36,13 +36,20 @@ def load_or_create_token(paths: AppPaths) -> str:
     """
     try:
         existing = paths.token.read_text(encoding="utf-8").strip()
-    except FileNotFoundError:
+    except (FileNotFoundError, UnicodeDecodeError):
+        # A corrupt (non-UTF-8) token file is treated the same as a missing one:
+        # regenerate rather than crash at startup.
         existing = ""
     if existing:
         return existing
     token = mint_token()
     paths.token.parent.mkdir(parents=True, exist_ok=True)
-    paths.token.write_text(token, encoding="utf-8")
+    # Create through ``os.open`` with ``0o600`` so the secret never exists even
+    # briefly with umask-derived permissions; the chmod below also covers a
+    # pre-existing file, whose mode ``os.open`` would leave untouched.
+    fd = os.open(paths.token, os.O_CREAT | os.O_WRONLY | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as handle:
+        handle.write(token)
     try:
         os.chmod(paths.token, 0o600)
     except OSError:  # pragma: no cover - depends on platform capability

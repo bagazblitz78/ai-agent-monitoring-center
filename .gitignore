@@ -1,0 +1,47 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# --- Node / Frontend ---
+node_modules/
+frontend/dist/
+frontend/.vite/
+*.tsbuildinfo
+
+# --- Local data & secrets (never commit) ---
+.env
+.env.*
+!.env.example
+*.db
+*.db-wal
+*.db-shm
+*.sqlite3
+data/
+logs/
+backups/
+spool/
+session.token
+*.pem
+*.key
+*.p12
+*.pfx
+
+# --- AgentScope runtime ---
+agentscope.pid
+.superpowers/
+
+# --- Editors / OS ---
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.swp

@@ -139,3 +139,15 @@ def test_every_api_route_requires_session(client):
     assert guarded, "expected at least one mounted /api/v1 route"
     for path, route in guarded:
         assert any(dep.dependency is require_session for dep in route.dependencies), path
+
+
+def test_health_is_the_only_unguarded_api_route(client):
+    """The auth exemption is scoped to exactly one route — nothing else slips through."""
+    unguarded = [
+        path
+        for path, route in _iter_api_routes(client.app.routes)
+        if path.startswith("/api/v1")
+        and not any(dep.dependency is require_session for dep in route.dependencies)
+    ]
+
+    assert unguarded == ["/api/v1/health"]

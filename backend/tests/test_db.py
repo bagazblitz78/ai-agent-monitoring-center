@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 
 import pytest
 from app import config, db
-from app.models import Agent, Base, Project
+from app.models import Agent, AgentSession, Base, Project
 from app.models.base import utc_now
 from sqlalchemy.exc import IntegrityError
 
@@ -83,3 +83,56 @@ def test_ids_are_uuid4_strings(app_home):
         identifier = project.id
     assert len(identifier) == 32
     assert uuid.UUID(identifier).version == 4
+
+
+def test_new_agent_and_session_have_no_activity_yet(app_home):
+    with db.new_session() as session:
+        project = Project(**PROJECT_KWARGS)
+        session.add(project)
+        session.flush()
+
+        agent = Agent(
+            project_id=project.id,
+            name="fresh",
+            adapter="generic_process",
+            provider="other",
+            match_kind="none",
+            status="unknown",
+            status_source="unknown",
+        )
+        session.add(agent)
+        session.flush()
+
+        agent_session = AgentSession(
+            agent_id=agent.id,
+            project_id=project.id,
+            status="running",
+            started_at=utc_now(),
+            heartbeat_interval_s=30,
+            source="opencode",
+            metadata_json="{}",
+        )
+        session.add(agent_session)
+        session.commit()
+
+        assert agent.last_activity_at is None
+        assert agent.last_event_message is None
+        assert agent.last_error is None
+        assert agent_session.external_key is None
+        assert agent_session.ended_at is None
+        assert agent_session.last_heartbeat_at is None
+
+
+def test_non_git_project_has_null_branch(app_home):
+    with db.new_session() as session:
+        project = Project(
+            name="plain",
+            path="D:\\code\\plain",
+            path_key="d:\\code\\plain",
+            is_git=False,
+        )
+        session.add(project)
+        session.commit()
+    assert project.is_git is False
+    assert project.default_branch is None
+    assert project.current_branch is None

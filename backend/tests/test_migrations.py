@@ -66,6 +66,28 @@ EXPECTED_COLUMNS = {
     "settings": {"key", "value_json", "updated_at"},
 }
 
+# The nullability ruling: "present" columns are nullable unless in the
+# allowed NOT NULL set (id, created_at, updated_at, required names, defaults).
+NULLABLE_COLUMNS = [
+    ("projects", "default_branch"),
+    ("projects", "current_branch"),
+    ("projects", "archived_at"),
+    ("agents", "match_value"),
+    ("agents", "confirmed_pid"),
+    ("agents", "last_activity_at"),
+    ("agents", "last_event_message"),
+    ("agents", "last_error"),
+    ("agent_sessions", "external_key"),
+    ("agent_sessions", "ended_at"),
+    ("agent_sessions", "last_heartbeat_at"),
+]
+NOT_NULL_COLUMNS = [
+    ("projects", "id"),
+    ("projects", "created_at"),
+    ("projects", "updated_at"),
+    ("projects", "path_key"),
+]
+
 
 @pytest.fixture
 def upgraded_home(tmp_path, monkeypatch):
@@ -133,5 +155,26 @@ def test_migrations_match_metadata(upgraded_home):
             migration_context = MigrationContext.configure(connection)
             diff = compare_metadata(migration_context, Base.metadata)
         assert diff == []
+    finally:
+        engine.dispose()
+
+
+def test_migrations_create_nullable_columns(upgraded_home):
+    home, _ = upgraded_home
+    engine = create_engine(f"sqlite:///{home / 'data' / 'agent_scope.db'}")
+    try:
+        inspector = inspect(engine)
+        columns = {
+            table_name: {c["name"]: c for c in inspector.get_columns(table_name)}
+            for table_name, _ in NULLABLE_COLUMNS + NOT_NULL_COLUMNS
+        }
+        for table_name, column_name in NULLABLE_COLUMNS:
+            assert columns[table_name][column_name]["nullable"] is True, (
+                f"{table_name}.{column_name} must be nullable"
+            )
+        for table_name, column_name in NOT_NULL_COLUMNS:
+            assert columns[table_name][column_name]["nullable"] is False, (
+                f"{table_name}.{column_name} must stay NOT NULL"
+            )
     finally:
         engine.dispose()

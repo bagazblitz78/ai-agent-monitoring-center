@@ -3,7 +3,7 @@
 > Companion to [PROJECT_PLAN.md](PROJECT_PLAN.md). **Living document** — status is updated continuously during Build Mode.
 > A milestone may only be marked `[x]` when every task below it is done **and** its acceptance criteria and required tests pass.
 
-**Overall status:** M1 — ✅ approved 2026-10-25 (Build Mode active) · M2 — 🟡 in progress
+**Overall status:** M1 — ✅ approved 2026-10-25 (Build Mode active) · M2 — ✅ complete 2026-10-26
 **Rules:** never mark an incomplete feature as completed; record blockers and failed tests in the "Deviations & Blockers" section at the bottom; an unverifiable capability is reported as `unverified`, not as done.
 
 ---
@@ -23,25 +23,25 @@
 
 ---
 
-## M2 — Backend foundation — 🟡 in progress
+## M2 — Backend foundation — ✅ complete (2026-10-26)
 
 Depends on: M1 approval.
 
-- [ ] Project scaffold: `backend/`, venv, `requirements.txt` + `requirements.lock`, `requirements-dev.txt`, `ruff` config
-- [ ] `config.py` (pydantic-settings, `platformdirs` paths, `AGENTSCOPE_HOME` override)
-- [ ] `db.py` (engine, WAL/FK pragmas, session factory, single-writer helper)
-- [ ] SQLAlchemy models for all 15 tables + FK/index definitions
-- [ ] Alembic init + initial migration; `alembic upgrade head` idempotent on empty DB
-- [ ] Pydantic request/response schemas with `extra="forbid"` and length caps
-- [ ] Error envelope + request-ID middleware + generic 401/403/404/422/429/413/500 handlers
-- [ ] `GET /api/v1/health` (liveness, db check, engine stats, queue depth)
-- [ ] `GET /api/v1/settings`, `PATCH /api/v1/settings`
-- [ ] App factory wired for test client + dev reload + static serving of `frontend/dist`
-- [ ] Test harness: `conftest.py` with tmp data dir, test DB, TestClient fixture
-- [ ] SSE endpoint skeleton (`/api/v1/stream`) replaying persisted events
+- [x] Project scaffold: `backend/`, venv, `requirements.txt` + `requirements.lock`, `requirements-dev.txt`, `ruff` config
+- [x] `config.py` (pydantic-settings, `platformdirs` paths, `AGENTSCOPE_HOME` override)
+- [x] `db.py` (engine, WAL/FK pragmas, session factory, single-writer helper)
+- [x] SQLAlchemy models for all 15 tables + FK/index definitions
+- [x] Alembic init + initial migration; `alembic upgrade head` idempotent on empty DB
+- [x] Pydantic request/response schemas with `extra="forbid"` and length caps
+- [x] Error envelope + request-ID middleware + generic 401/403/404/422/429/413/500 handlers
+- [x] `GET /api/v1/health` (liveness, db check, engine stats, queue depth)
+- [x] `GET /api/v1/settings`, `PATCH /api/v1/settings`
+- [x] App factory wired for test client + dev reload + static serving of `frontend/dist`
+- [x] Test harness: `conftest.py` with tmp data dir, test DB, TestClient fixture
+- [x] SSE endpoint skeleton (`/api/v1/stream`) replaying persisted events
 
-**Tests:** migrations create/upgrade, health, settings round-trip, error envelope shape, 401/404 behavior.
-**Acceptance:** `pytest` green; `uvicorn` boots and `/docs` loads; DB file created in the app data dir, not the repo.
+**Tests:** ✅ 91 passed (migrations create/upgrade incl. idempotency + schema drift check, health, settings round-trip, error envelope shape, 401/404/422 behavior, auth sweep, SSE replay/resync).
+**Acceptance:** ✅ `pytest` green (91); `uvicorn` boots and `/docs` loads; DB file created in the app data dir, not the repo.
 
 ---
 
@@ -204,4 +204,4 @@ M6 starts once the OpenAPI contract is frozen (end of M2) and completes against 
 | Milestone | Suite | Result | Notes |
 |---|---|---|---|
 | M1 | planning docs | n/a | 5 docs written; no code to test. Approved 2026-10-25. |
-| M2 | backend suite | running | — |
+| M2 | backend suite | ✅ 91 passed | 2026-10-26: `pytest -q` 91 passed (migrations/idempotency, health, settings, error envelope, auth sweep, SSE replay), `ruff check .` clean. Final review: 2 Important findings (health `sse_clients` wiring, 422 code split) fixed + re-review ALL ADDRESSED. `uvicorn` boot + `/docs` + DB-location acceptance verified manually. |

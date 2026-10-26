@@ -27,6 +27,7 @@ from app.config import resolve_paths
 
 __all__ = [
     "ERROR_CODES",
+    "ERROR_MESSAGES",
     "PathValidation",
     "is_git_worktree",
     "is_within",
@@ -46,6 +47,21 @@ ERROR_CODES: tuple[str, ...] = (
     "not_readable",
     "permission_denied",
 )
+
+#: Human wording for every :data:`ERROR_CODES` entry. The API keeps returning
+#: the codes (stable and translatable) and carries this text next to them, so a
+#: caller never has to invent its own copy of the wording — one map, one truth.
+ERROR_MESSAGES: dict[str, str] = {
+    "not_absolute": "use an absolute path, e.g. D:\\code\\my-repo",
+    "traversal": "the path must not contain ..",
+    "unc_or_device": "network shares (\\\\server\\share) and device paths are not allowed",
+    "filesystem_root": "a drive or filesystem root cannot be a project",
+    "inside_app_home": "that directory is inside the AgentScope data directory",
+    "not_found": "that directory does not exist here",
+    "not_a_directory": "that path is a file, not a directory",
+    "not_readable": "that directory cannot be read",
+    "permission_denied": "that directory cannot be read (permission denied)",
+}
 
 #: UNC shares and DOS device paths (``\\server\share``, ``\\?\C:\x``, ``//host/p``).
 _DEVICE_PREFIXES = ("\\\\", "//")
@@ -123,8 +139,12 @@ def validate_project_path(raw: str, *, must_exist: bool = True) -> PathValidatio
     Structural problems (shape, traversal, home boundary) short-circuit with
     ``path=None``; existence problems keep the resolved ``path``/``path_key`` so
     callers can report *which* directory was unusable.
+
+    Surrounding quotes are trimmed first: a path copied out of a shell or a
+    terminal keeps them (``"D:\\code"``), and rejecting a well-formed directory
+    over a pair of quotes helps nobody.
     """
-    text = raw or ""
+    text = (raw or "").strip().strip("\"'`").strip()
 
     errors: list[str] = []
     if text.lstrip().startswith(_DEVICE_PREFIXES):

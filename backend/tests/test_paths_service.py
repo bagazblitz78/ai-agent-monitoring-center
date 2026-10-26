@@ -253,3 +253,32 @@ def test_is_git_worktree_true_for_worktree_file_marker(tmp_path):
     marked.mkdir()
     (marked / ".git").write_text("gitdir: ../.git/worktrees/x\n", encoding="utf-8")
     assert paths_service.is_git_worktree(marked) is True
+
+# --- pasted quotes and human wording ----------------------------------------
+
+
+def test_surrounding_quotes_are_trimmed(tmp_path, home):
+    """A path copied out of a terminal keeps its quotes; the policy tolerates them."""
+    target = tmp_path / "quoted"
+    target.mkdir()
+    for raw in (f'"{target}"', f"'{target}'", f"`{target}`", f'  "{target}"  '):
+        result = paths_service.validate_project_path(raw)
+        assert result.ok is True, (raw, result.errors)
+        assert result.path == Path(os.path.realpath(str(target)))
+
+
+def test_quote_only_input_is_not_absolute(home):
+    for raw in ('""', "'", "`", '  "  '):
+        result = paths_service.validate_project_path(raw)
+        assert result.ok is False
+        assert "not_absolute" in result.errors
+
+
+def test_error_messages_cover_the_whole_code_vocabulary():
+    missing = [
+        code
+        for code in paths_service.ERROR_CODES
+        if not paths_service.ERROR_MESSAGES.get(code)
+    ]
+    assert missing == []
+    assert all(len(text) > 10 for text in paths_service.ERROR_MESSAGES.values())

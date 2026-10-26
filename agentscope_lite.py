@@ -64,6 +64,26 @@ SKIP_DIRS = {"node_modules", ".venv", "venv", "__pycache__", "dist", "build",
 SKIP_SUFFIXES = (".lock", ".pem", ".key", ".p12", ".pfx")
 SKIP_PREFIXES = (".env", "id_rsa", "id_ed25519", "credentials", "auth.json")
 
+# -- project discovery ------------------------------------------------------
+#: Subtrees the discovery walk never descends into (dependencies, build output,
+#: VCS internals, recycle bins): listing them would be pure noise.
+DISCOVER_PRUNE_DIRS = {
+    "node_modules", ".venv", "venv", "env", "__pycache__", "dist", "build",
+    "target", ".next", ".git", ".hg", ".svn", "vendor", "site-packages",
+    ".tox", ".mypy_cache", ".pytest_cache", ".ruff_cache", ".cache",
+    ".idea", ".vscode", "$RECYCLE.BIN", "System Volume Information",
+}
+#: Agent-owned markers: a directory holding one of these is a project even
+#: when it is not a git repository.
+DISCOVER_MARKER_DIRS = {".aider", ".claude", ".codex", ".cursor", ".gemini", ".opencode"}
+DISCOVER_MARKER_FILES = {
+    "AGENTS.md", "CLAUDE.md", "GEMINI.md", "opencode.json",
+    ".aider.conf.yml", ".cursorrules",
+}
+DISCOVER_DEPTH = 4          # levels below the root that are scanned
+DISCOVER_MAX_VISITED = 5000  # directories opened by a single walk
+DISCOVER_MAX_CANDIDATES = 100  # proposals returned by a single walk
+
 DEFAULT_MATCHERS = ["opencode", "claude", "codex", "aider", "gemini"]
 
 #: Flags whose value is always a secret, whatever it looks like.
@@ -263,6 +283,128 @@ def _git(root: Path, *args: str) -> subprocess.CompletedProcess:
         ["git", "-C", str(root), *args],
         capture_output=True, env=env, timeout=15,
     )
+
+
+# --------------------------------------------------------------------------
+# project discovery (read-only walk over a root directory)
+# --------------------------------------------------------------------------
+
+def _is_repo_root(directory: Path) -> bool:
+    """True only for the *top level* of a git work tree.
+
+    The ``.git`` pre-filter keeps ordinary folders from spawning a process at
+    all; the toplevel comparison stops a subfolder of a repository from being
+    reported as a project of its own.
+    """
+    if not GIT:
+        return False
+    try:
+        if not (directory / ".git").exists():
+            return False
+        probe = _git(directory, "rev-parse", "--show-toplevel")
+    except (OSError, subprocess.SubprocessError):
+        return False
+    if probe.returncode != 0:
+        return False
+    top = probe.stdout.decode("utf-8", "replace").strip()
+    if not top:
+        return False
+    return os.path.realpath(top) == os.path.realpath(str(directory))
+
+
+def _candidate_reason(directory: Path) -> str | None:
+    """Why ``directory`` is an agent project, or ``None`` when it is not."""
+    if _is_repo_root(directory):
+        return "git"
+    for name in sorted(DISCOVER_MARKER_DIRS):
+        try:
+            if (directory / name).is_dir():
+                return f"{name}/"
+        except OSError:
+            continue
+    for name in sorted(DISCOVER_MARKER_FILES):
+        try:
+            if (directory / name).is_file():
+                return name
+        except OSError:
+            continue
+    return None
+
+
+def discover_candidates(
+    root: str,
+    *,
+    depth: int = DISCOVER_DEPTH,
+    registered: list[str] | None = None,
+    max_visited: int = DISCOVER_MAX_VISITED,
+    max_candidates: int = DISCOVER_MAX_CANDIDATES,
+) -> dict:
+    """Scan ``root`` read-only and propose the agent projects underneath it.
+
+    A directory qualifies when it is the root of a git repository or when it
+    holds an agent marker; once something qualifies the walk stops there,
+    because everything inside belongs to that project. Dependency and build
+    subtrees are pruned, symlinks are not followed, and nothing on disk is
+    written, touched or even opened for writing.
+
+    Returns ``{"root", "errors", "depth", "scanned", "truncated",
+    "candidates": [{"path", "name", "reason", "already_registered"}]}``.
+    """
+    validation = validate_project_path(root)
+    out = {
+        "root": validation["path"],
+        "errors": list(validation["errors"]),
+        "depth": max(0, int(depth)),
+        "scanned": 0,
+        "truncated": False,
+        "candidates": [],
+    }
+    if out["errors"]:
+        return out
+
+    known = {os.path.realpath(str(path)) for path in (registered or [])}
+    queue: list[tuple[Path, int]] = [(Path(out["root"]), 0)]
+    scanned = 0
+
+    while queue:
+        if scanned >= max_visited:
+            out["truncated"] = True
+            break
+        directory, level = queue.pop(0)  # breadth first: shallow projects first
+        scanned += 1
+
+        reason = _candidate_reason(directory)
+        if reason:
+            if len(out["candidates"]) >= max_candidates:
+                out["truncated"] = True
+                break
+            path = os.path.realpath(str(directory))
+            out["candidates"].append({
+                "path": path,
+                "name": directory.name or path,
+                "reason": reason,
+                "already_registered": path in known,
+            })
+            continue  # do not descend: the contents belong to this project
+
+        if level >= out["depth"]:
+            continue
+        try:
+            children = sorted(directory.iterdir(), key=lambda p: p.name.lower())
+        except OSError:
+            continue  # unreadable here: skip it rather than fail the walk
+        for child in children:
+            if child.name in DISCOVER_PRUNE_DIRS:
+                continue
+            try:
+                if child.is_symlink() or not child.is_dir():
+                    continue
+            except OSError:
+                continue
+            queue.append((child, level + 1))
+
+    out["scanned"] = scanned
+    return out
 
 
 # --------------------------------------------------------------------------

@@ -11,6 +11,8 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
+import re
+import shutil
 import subprocess
 import threading
 import urllib.error
@@ -196,3 +198,30 @@ def test_register_batch_demands_a_non_empty_path_list(lite_server):
 
         assert status == 422, body
         assert payload["error"]["errors"] == ["paths_required"], body
+
+
+# -- dashboard --------------------------------------------------------------
+
+def test_dashboard_ships_the_review_controls(lite_server, tmp_path):
+    """The scan, its checkbox review list and the batch button are on the page."""
+    with urllib.request.urlopen(lite_server.base + "/", timeout=15) as response:
+        html = response.read().decode("utf-8")
+
+    for marker in ('id="detect"', 'id="findings"', 'id="findings-list"',
+                   'id="register-selected"', "/api/projects/discover"):
+        assert marker in html, marker
+
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node is not installed")
+    script = re.search(r"<script>(.*)</script>", html, re.S)
+    assert script, "the dashboard ships a script block"
+    body = script.group(1)
+    # every element the script reaches for must actually be on the page
+    missing = sorted(name for name in re.findall(r'\$\("([a-z0-9-]+)"\)', body)
+                     if f'id="{name}"' not in html)
+    assert not missing, missing
+    js = tmp_path / "dashboard.js"
+    js.write_text(body, encoding="utf-8")
+    checked = subprocess.run([node, "--check", str(js)], capture_output=True)
+    assert checked.returncode == 0, checked.stderr.decode("utf-8", "replace")

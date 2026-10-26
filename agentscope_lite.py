@@ -1049,6 +1049,24 @@ INDEX_HTML = r"""<!doctype html>
   button:hover{filter:brightness(1.07)}
   .err{color:#F0A19A;font-size:12.5px;min-height:18px;margin-top:6px}
   .err.ok{color:#9BE3C2}
+  button:disabled{opacity:.45;cursor:not-allowed;filter:none}
+  .findings{border:1px solid var(--border);border-radius:8px;background:var(--bg);
+            margin-top:8px;padding:9px 10px;display:flex;flex-direction:column;gap:8px}
+  .findings[hidden]{display:none}
+  .findings-head{display:flex;align-items:center;gap:8px;font-size:12.5px;
+                 color:var(--muted)}
+  .findings-head strong{color:var(--text)}
+  .findings-head .grow{flex:1}
+  .findings-list{display:flex;flex-direction:column;max-height:190px;overflow:auto;gap:1px}
+  .find{display:flex;align-items:center;gap:8px;font-size:12.5px;padding:4px 2px;
+        cursor:pointer}
+  .find input{accent-color:var(--accent);margin:0}
+  .find .name{font-weight:600}
+  .find .rel{flex:1;min-width:0;color:var(--muted);font-size:11.5px;
+             overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .find.reg .name{color:var(--muted);text-decoration:line-through}
+  .findings .err{margin-top:0;min-height:0}
+  .findings-note{color:#F3C88B;font-size:12px}
   table{width:100%;border-collapse:collapse;font-size:13px}
   th{text-align:left;font-size:11px;letter-spacing:.6px;text-transform:uppercase;
      color:var(--muted);font-weight:600;padding:7px 8px;border-bottom:1px solid var(--border)}
@@ -1106,8 +1124,24 @@ INDEX_HTML = r"""<!doctype html>
         <input type="text" id="path" placeholder="Absolute path to a project, e.g. D:\code\my-repo"
                autocomplete="off" spellcheck="false">
         <button type="submit">Register</button>
+        <button type="button" class="ghost" id="detect"
+                title="Scan this directory for agent projects underneath it">Detect</button>
       </form>
       <div class="err" id="add-error"></div>
+      <div class="findings" id="findings" hidden>
+        <div class="findings-head">
+          <strong id="findings-title">projects found</strong>
+          <span class="grow"></span>
+          <button type="button" class="ghost" id="findings-all">select all</button>
+          <button type="button" class="ghost" id="findings-cancel">cancel</button>
+        </div>
+        <div class="findings-list" id="findings-list"></div>
+        <div class="findings-note" id="findings-note" hidden></div>
+        <div class="findings-foot">
+          <button type="button" id="register-selected" disabled>Register selected</button>
+          <span class="err" id="findings-error"></span>
+        </div>
+      </div>
       <table>
         <thead><tr><th>Project</th><th class="num">Files</th>
           <th class="num">Commits</th><th></th></tr></thead>
@@ -1349,6 +1383,132 @@ async function tick() {
     busy = false;
   }
 }
+
+// --- discovery: scan a root, review what is underneath, register it --------
+let found = [];        // candidates currently on screen
+let foundRoot = "";    // the root they were found under
+
+const selectedPaths = () =>
+  [...document.querySelectorAll("[data-find]:not(:disabled)")]
+    .filter(box => box.checked)
+    .map(box => found[Number(box.dataset.find)].path);
+
+function updateRegisterButton() {
+  const boxes = [...document.querySelectorAll("[data-find]")];
+  const ready = boxes.filter(box => !box.disabled);
+  const picked = ready.filter(box => box.checked).length;
+  const button = $("register-selected");
+  button.textContent = "Register selected (" + picked + ")";
+  button.disabled = picked === 0;
+  $("findings-all").textContent = picked === ready.length ? "none" : "select all";
+}
+
+function renderFindings(truncated = false) {
+  const panel = $("findings");
+  if (!found.length) {
+    panel.hidden = true;
+    return;
+  }
+  panel.hidden = false;
+  $("findings-title").textContent = num(found.length) + " project" +
+    (found.length === 1 ? "" : "s") + " under " + foundRoot;
+  $("findings-list").innerHTML = found.map((candidate, index) => {
+    const rel = candidate.path.slice(foundRoot.length).replace(/^[/\\]+/, "") || ".";
+    const taken = Boolean(candidate.already_registered);
+    const tag = taken ? "registered" : candidate.reason;
+    return `<label class="find${taken ? " reg" : ""}" title="${esc(candidate.path)}">
+      <input type="checkbox" data-find="${index}" ${taken ? "disabled checked" : "checked"}>
+      <span class="name">${esc(candidate.name)}</span>
+      <span class="rel">${esc(rel)}</span>
+      <span class="tag${candidate.reason === "git" ? " git" : ""}">${esc(tag)}</span>
+    </label>`;
+  }).join("");
+  const note = $("findings-note");
+  note.hidden = !truncated;
+  note.textContent = truncated
+    ? "the walk hit its limit — these are the first " + found.length : "";
+  updateRegisterButton();
+}
+
+$("detect").onclick = async () => {
+  const input = $("path"), note = $("add-error"), button = $("detect");
+  const raw = input.value.trim();
+  note.className = "err";
+  if (!raw) {
+    note.textContent = WHY["required"];
+    return;
+  }
+  button.disabled = true;
+  note.textContent = "scanning…";
+  found = [];
+  renderFindings();
+  try {
+    const data = await api("/api/projects/discover", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({path: raw}),
+    });
+    found = data.candidates;
+    foundRoot = data.root;
+    input.value = data.root;
+    note.textContent = found.length ? "" : "no projects found under " + data.root;
+    renderFindings(Boolean(data.truncated));
+  } catch (e) {
+    note.textContent = e.message;
+    renderFindings();
+  } finally {
+    button.disabled = false;
+  }
+};
+
+$("findings-list").onchange = updateRegisterButton;
+
+$("findings-all").onclick = () => {
+  const boxes = [...document.querySelectorAll("[data-find]")].filter(box => !box.disabled);
+  const allOn = boxes.every(box => box.checked);
+  boxes.forEach(box => { box.checked = !allOn; });
+  updateRegisterButton();
+};
+
+$("findings-cancel").onclick = () => {
+  found = [];
+  renderFindings();
+  const note = $("add-error");
+  note.className = "err";
+  note.textContent = "";
+};
+
+$("register-selected").onclick = async () => {
+  const paths = selectedPaths(), note = $("add-error");
+  if (!paths.length) return;
+  const button = $("register-selected");
+  button.disabled = true;
+  note.className = "err";
+  note.textContent = "registering…";
+  try {
+    const data = await api("/api/projects/discover/register", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({paths}),
+    });
+    const parts = ["registered " + data.added.length];
+    if (data.skipped.length) parts.push(data.skipped.length + " already registered");
+    if (data.failed.length) {
+      parts.push(data.failed.length + " failed: " + data.failed.map(f =>
+        f.errors.map(code => WHY[code] || code).join(", ")).join("; "));
+    }
+    note.className = data.failed.length ? "err" : "err ok";
+    note.textContent = parts.join(" · ");
+    found = [];
+    renderFindings();
+    await tick();
+  } catch (e) {
+    note.className = "err";
+    note.textContent = e.message;
+  } finally {
+    button.disabled = false;
+  }
+};
 
 $("add-form").onsubmit = async ev => {
   ev.preventDefault();

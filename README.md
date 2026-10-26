@@ -46,6 +46,12 @@ values are redacted before anything is stored, and the monitor itself is never
 listed among the agent processes. Run `python agentscope_lite.py --help` for
 all flags.
 
+With several projects registered the **File changes** and **Git commits**
+feeds stay readable: they are bucketed by project under sticky headers (in
+registration order, newest first inside each bucket). Click a project's name —
+or the `focused: <name>` pill in the header — to scope both feeds to that one
+project; click again to go back to everything.
+
 ---
 
 ## What works today

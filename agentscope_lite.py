@@ -541,11 +541,14 @@ class State:
         with self.lock:
             self.projects.append(project)
             # import the recent history so the dashboard is useful immediately,
-            # and take a file baseline so the first scan reports nothing.
-            for commit in history:
-                commit = dict(commit, project_id=pid, project_name=project["name"])
-                if commit["sha"] not in {c["sha"] for c in self.commits}:
-                    self.commits.insert(0, commit)
+            # newest first, and attribute every row to this project
+            known = {c["sha"] for c in self.commits}
+            imported = [
+                dict(commit, project_id=pid, project_name=project["name"])
+                for commit in history
+                if commit["sha"] not in known
+            ]
+            self.commits = imported + self.commits
             self.commits = self.commits[:MAX_COMMITS]
             project["commit_count"] = len(history)
             self._dirty = True
@@ -580,9 +583,13 @@ class State:
     def note_commits(self, project: dict, commits: list[dict]) -> None:
         with self.lock:
             known = {c["sha"] for c in self.commits}
-            fresh = [c for c in commits if c["sha"] not in known]
-            for commit in fresh:
-                commit = dict(commit, project_id=project["id"], project_name=project["name"])
+            # build fresh dicts: rebinding the loop variable would leave the
+            # list holding the original, unattributed commit
+            fresh = [
+                dict(commit, project_id=project["id"], project_name=project["name"])
+                for commit in commits
+                if commit["sha"] not in known
+            ]
             self.commits = fresh + self.commits
             self.commits = self.commits[:MAX_COMMITS]
             if fresh:
@@ -886,6 +893,19 @@ INDEX_HTML = r"""<!doctype html>
   .tag.deleted{color:#F0A19A;border-color:#5B2F2F}
   .tag.git{color:#A9C7F2;border-color:#2F415B}
   .list{display:flex;flex-direction:column;max-height:330px;overflow:auto}
+  .group{display:flex;align-items:center;gap:8px;position:sticky;top:0;z-index:2;
+         background:var(--surface);border-bottom:1px solid var(--border);
+         padding:9px 0 6px;font-size:11px;letter-spacing:.6px;text-transform:uppercase;
+         color:var(--accent);font-weight:650}
+  .group .count{color:var(--muted);background:var(--surface2);
+                border:1px solid var(--border);border-radius:999px;
+                padding:0 7px;font-size:10.5px;letter-spacing:0;text-transform:none}
+  .link{background:none;border:0;padding:0;color:var(--text);font:inherit;font-weight:600;
+        cursor:pointer;text-align:left}
+  .link:hover{color:var(--accent);text-decoration:underline}
+  tr.sel td{background:#242730}
+  tr.sel .link{color:var(--accent)}
+  .pill.focus{color:#F3C88B;border-color:#5B4A2F;background:#2A2419;cursor:pointer}
   .row{display:flex;gap:10px;align-items:baseline;padding:7px 0;
        border-bottom:1px solid var(--border);font-size:13px}
   .row:last-child{border-bottom:0}
@@ -903,6 +923,8 @@ INDEX_HTML = r"""<!doctype html>
   <div class="pill ok" id="status">connecting…</div>
   <div class="pill" id="uptime">—</div>
   <div class="pill" id="port">—</div>
+  <div class="pill focus" id="focus-pill" style="display:none"
+       title="Click to show every project again"></div>
   <div class="spacer"></div>
   <div class="pill" title="This tool never writes into a monitored project">read-only</div>
 </header>
@@ -1014,10 +1036,65 @@ const WHY = {
   "already_registered": "that project is already registered",
 };
 
+// --- per-project reading: one project can be focused, feeds are grouped ----
+let focusId = null;
+try { focusId = localStorage.getItem("scope-focus") || null; } catch (e) { focusId = null; }
+
+function setFocus(id) {
+  focusId = (focusId === id) ? null : id;
+  try { localStorage.setItem("scope-focus", focusId || ""); } catch (e) { /* private mode */ }
+  tick();
+}
+
+function scoped(items) {
+  return focusId ? items.filter(item => item.project_id === focusId) : items;
+}
+
+/** Bucket a feed by project, keeping project-registration order. */
+function grouped(items, projects) {
+  const order = projects.map(p => ({id: p.id, name: p.name}));
+  const known = new Set(order.map(p => p.id));
+  for (const item of items) {
+    if (!known.has(item.project_id)) {           // defensive: never lose rows
+      known.add(item.project_id);
+      order.push({id: item.project_id, name: item.project_name || item.project_id});
+    }
+  }
+  return order
+    .map(p => ({name: p.name, items: items.filter(i => i.project_id === p.id)}))
+    .filter(group => group.items.length);
+}
+
+/** Render buckets with sticky headers, capped to ``limit`` rows in total. */
+function renderGroups(groups, rowHtml, limit, showHeaders) {
+  let budget = limit;
+  let html = "";
+  for (const group of groups) {
+    if (budget <= 0) break;
+    const slice = group.items.slice(0, budget);
+    budget -= slice.length;
+    if (showHeaders) {
+      html += `<div class="group">${esc(group.name)}` +
+              `<span class="count">${group.items.length}</span></div>`;
+    }
+    html += slice.map(rowHtml).join("");
+  }
+  return html;
+}
+
 function render(s) {
   $("status").textContent = "live · " + s.health.status;
   $("uptime").textContent = clock(s.app.uptime_s) + " uptime";
   $("footer-data").textContent = DATA_FILE;
+
+  const focused = focusId ? s.projects.find(p => p.id === focusId) : null;
+  if (focusId && !focused) {                 // the focused project was removed
+    focusId = null;
+    try { localStorage.setItem("scope-focus", ""); } catch (e) { /* ignore */ }
+  }
+  const pill = $("focus-pill");
+  pill.style.display = focused ? "" : "none";
+  if (focused) pill.textContent = "focused: " + focused.name + "  ✕";
 
   // projects
   $("project-count").textContent = s.projects.length;
@@ -1029,13 +1106,19 @@ function render(s) {
     const badge = p.is_git
       ? `<span class="tag git">${esc(p.branch || "no branch")}</span>` + dirty
       : `<span class="tag">not git</span>`;
-    return `<tr>
-      <td><div>${esc(p.name)}</div><div class="path">${esc(p.path)}</div><div>${badge}</div></td>
+    const selected = p.id === focusId ? " sel" : "";
+    const hint = p.id === focusId ? "click to show every project" : "show only this project";
+    return `<tr class="${selected}">
+      <td><button class="link" data-focus="${esc(p.id)}" title="${hint}">${esc(p.name)}</button>
+          <div class="path">${esc(p.path)}</div><div>${badge}</div></td>
       <td class="num">${num(p.change_count)}</td>
       <td class="num">${num(p.commit_count)}</td>
       <td><button class="ghost" data-del="${esc(p.id)}">remove</button></td>
     </tr>`;
   }).join("");
+  document.querySelectorAll("[data-focus]").forEach(btn => {
+    btn.onclick = () => setFocus(btn.dataset.focus);
+  });
   document.querySelectorAll("[data-del]").forEach(btn => btn.onclick = async () => {
     if (!confirm("Unregister this project? No files are touched.")) return;
     try { await api("/api/projects/" + btn.dataset.del, {method: "DELETE"}); await tick(); }
@@ -1054,25 +1137,32 @@ function render(s) {
       <span class="tag">${bytes(p.rss_bytes)}</span>
     </div>`).join("");
 
-  // file changes
-  $("change-count").textContent = s.stats.file_events;
-  $("changes-empty").style.display = s.file_changes.length ? "none" : "block";
-  $("changes").innerHTML = s.file_changes.slice(0, 80).map(c => `<div class="row">
+  // file changes — bucketed by project so feeds never interleave
+  const changeRows = scoped(s.file_changes);
+  const changeGroups = grouped(changeRows, s.projects);
+  $("change-count").textContent = focused ? num(focused.change_count) : num(s.stats.file_events);
+  $("changes-empty").style.display = changeRows.length ? "none" : "block";
+  $("changes-empty").textContent = focused
+    ? "Nothing has changed in this project yet." : "Nothing has changed yet.";
+  $("changes").innerHTML = renderGroups(changeGroups, c => `<div class="row">
       <span class="when">${esc(ago(c.ts))}</span>
       <span class="tag ${esc(c.action)}">${esc(c.action)}</span>
       <span class="mono path" style="color:var(--text)">${esc(c.path)}</span>
-      <span class="who">${esc(c.project_name)}</span>
-    </div>`).join("");
+    </div>`, 80, !focusId);
 
-  // commits
-  $("commit-count").textContent = s.commits.length;
-  $("commits-empty").style.display = s.commits.length ? "none" : "block";
-  $("commits").innerHTML = s.commits.slice(0, 80).map(c => `<div class="row">
+  // git commits — same treatment
+  const commitRows = scoped(s.commits);
+  const commitGroups = grouped(commitRows, s.projects);
+  $("commit-count").textContent = focused ? num(focused.commit_count) : num(s.commits.length);
+  $("commits-empty").style.display = commitRows.length ? "none" : "block";
+  $("commits-empty").textContent = focused
+    ? "No commits recorded for this project." : "No commits recorded.";
+  $("commits").innerHTML = renderGroups(commitGroups, c => `<div class="row">
       <span class="when">${esc(ago(c.at))}</span>
       <span class="mono tag git" title="${esc(c.sha)}">${esc(c.short)}</span>
       <span>${esc(c.subject)}</span>
-      <span class="who">${esc(c.author)} · ${esc(c.project_name || "")}</span>
-    </div>`).join("");
+      <span class="who">${esc(c.author)}</span>
+    </div>`, 80, !focusId);
 }
 
 let busy = false;
@@ -1113,6 +1203,8 @@ $("add-form").onsubmit = async ev => {
     note.textContent = e.message;
   }
 };
+
+$("focus-pill").onclick = () => { if (focusId) setFocus(focusId); };  // clear the focus
 
 setInterval(tick, 2000);
 tick();

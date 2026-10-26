@@ -45,7 +45,7 @@ Depends on: M1 approval.
 
 ---
 
-## M3 — Project and process monitoring — 🔶 in progress (2026-10-26)
+## M3 — Project and process monitoring — ✅ complete (2026-10-26)
 
 Depends on: M2.
 
@@ -58,10 +58,10 @@ Depends on: M2.
 - [x] `FileMonitor` (watchdog) with default exclude list, 500 ms debounce, event cap, escape-drop on symlink
 - [x] `file_changes` API with pagination
 - [x] Multi-agent-per-project support and non-git project support
-- [ ] Inaccessible-directory and permission-error handling → surfaced status, no crash
+- [x] Inaccessible-directory and permission-error handling → surfaced status, no crash
 
 **Tests:** path traversal (3 vectors), non-existent path, non-git project, temp git repo status/commit detection, spawned dummy process discovery + snapshot + exit detection, watchdog create/modify events with debounce, excluded `.env` not reported, symlink escape dropped, permission-denied path.
-**Acceptance:** register 3 directories (one non-git, one on another drive), see live file changes and git commits in API; no file in any project is modified (asserted by snapshotting project mtimes/hashes).
+**Acceptance:** ✅ `pytest` green (262 passed, 4 skipped — all 4 skips are environmental: symlink privilege, Windows `chmod` not revoking owner access ×2, and no second drive for the cross-drive case; permission errors also have a monkeypatched-`stat` variant, and watching itself is asserted on the paths that work here); register 3 directories (one non-git, one on another drive), see live file changes and git commits in API; no file in any project is modified (asserted by snapshotting project mtimes/hashes); uvicorn boots with monitors enabled, `/api/v1/health` reports `engine.monitors`, shutdown leaves no dangling tasks.
 
 ---
 
@@ -207,3 +207,4 @@ M6 starts once the OpenAPI contract is frozen (end of M2) and completes against 
 |---|---|---|---|
 | M1 | planning docs | n/a | 5 docs written; no code to test. Approved 2026-10-25. |
 | M2 | backend suite | ✅ 91 passed | 2026-10-26: `pytest -q` 91 passed (migrations/idempotency, health, settings, error envelope, auth sweep, SSE replay), `ruff check .` clean. Final review: 2 Important findings (health `sse_clients` wiring, 422 code split) fixed + re-review ALL ADDRESSED. `uvicorn` boot + `/docs` + DB-location acceptance verified manually. |
+| M3 | backend suite | ✅ 262 passed, 4 skipped | 2026-10-26: `pytest -q` 262 passed / 4 skipped (symlink privilege, Windows `chmod` ×2, cross-drive), `ruff check .` clean. M3 adds 171 tests across 9 tasks (paths, git inspection, project API, FileMonitor, ProcessMonitor, GitMonitor, file-changes API, supervisor, M3 acceptance). Skips all environmental with running variants. `uvicorn` boot smoke with `AGENTSCOPE_DISABLE_MONITORS=0`: `/api/v1/health` 200 with `engine.monitors {"file":0,"process":true,"git":true}`, clean shutdown, no dangling-task warnings. |

@@ -238,7 +238,7 @@
 - Produces:
   - `class Supervisor` with `start(app) / stop()` — builds/starts one `FileMonitor` per `active + watch_enabled` project (created **after** registration too: a `refresh_monitors()` method is called at the end of project create/archive/delete/patch handlers via `request.app.state.supervisor`), starts `ProcessMonitor` + `GitMonitor` once; `stop()` stops all observers/tasks cleanly on shutdown; double-start is a no-op; supervisor is **not** started when `Settings().disable_monitors` (new config flag, default False — tests set it to keep unit tests deterministic; TestClient fixture may run with monitors off unless a test opts in).
   - `GET /api/v1/health` gains `engine.monitors: {"file": n, "process": bool, "git": bool}` (documented in the M2 key-set? — additive key, acceptable; update the health shape test).
-- [ ] **Step 1: Failing tests**:
+- [x] **Step 1: Failing tests**:
   - `test_supervisor.py`: registering a project starts exactly one observer for its root (inspect `supervisor._monitors`); archiving stops it; deleting stops + removes; `watch_enabled=false` → no observer; app startup/shutdown lifecycle via TestClient context manager starts/stops without leaked threads (assert observer count 0 after exit).
   - `test_m3_acceptance.py` (the milestone acceptance, automated):
     1. create **three** project dirs: git repo on `tmp_path` (drive D:), plain non-git dir on `tmp_path`, and a plain dir under `tempfile.gettempdir()` (drive C: — the "another drive" case; skip that sub-case if it resolves to the same drive);
@@ -246,10 +246,10 @@
     3. start monitors, mutate one file in the git project and one in the non-git project → `file_changes` API shows both within 5 s; create a commit → `git_commits` has the new sha, non-git project unaffected;
     4. **read-only assertion**: hash+mtime snapshot of every file in all three dirs taken before registration and after all monitoring activity → identical (except the two files the test itself wrote, whose *content is byte-equal to what the test wrote*, and no *new* files exist beyond those the test created);
     5. permission-denied path (chmod-0 dir with `skipif` fallback + monkeypatch variant) → API returns `permission_denied`, server still healthy (`/api/v1/health` 200).
-- [ ] **Step 2: Confirm failure.**
-- [ ] **Step 3: Implement** — wire monitors into `create_app` **lifespan** (not import time); project mutation endpoints call `refresh_monitors`.
-- [ ] **Step 4: Full suite + ruff** — `.venv\Scripts\python.exe -m pytest -q` all green; `.venv\Scripts\python.exe -m ruff check .` clean. Boot smoke: uvicorn starts with monitors enabled, `/api/v1/health` 200, clean shutdown without dangling-thread warnings.
-- [ ] **Step 5: Commit** — `feat: wire monitoring engine supervisor and M3 acceptance tests`
+- [x] **Step 2: Confirm failure.**
+- [x] **Step 3: Implement** — wire monitors into `create_app` **lifespan** (not import time); project mutation endpoints call `refresh_monitors`.
+- [x] **Step 4: Full suite + ruff** — `.venv\Scripts\python.exe -m pytest -q` all green; `.venv\Scripts\python.exe -m ruff check .` clean. Boot smoke: uvicorn starts with monitors enabled, `/api/v1/health` 200, clean shutdown without dangling-thread warnings.
+- [x] **Step 5: Commit** — `feat: wire monitoring engine supervisor and M3 acceptance tests`
 
 ---
 

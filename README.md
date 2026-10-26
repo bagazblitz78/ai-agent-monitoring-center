@@ -24,6 +24,8 @@ process to manage. Run it and a dashboard opens in your browser:
 ```bash
 python agentscope_lite.py                                  # opens http://127.0.0.1:8790
 python agentscope_lite.py --project D:/code/my-repo         # pre-register a project
+python agentscope_lite.py --discover D:/code                # register everything under D:/code
+python agentscope_lite.py --discover D:/code --depth 6      # scan deeper than the default 4
 python agentscope_lite.py --no-browser --port 8791          # headless
 python agentscope_lite.py --match opencode --match claude   # custom agent matchers
 ```
@@ -37,6 +39,7 @@ python agentscope_lite.py --match opencode --match claude   # custom agent match
 | Git | `GitPython`, 5 s poll | `git` CLI, 5 s poll, `GIT_OPTIONAL_LOCKS=0` |
 | Processes | `psutil` matchers | PowerShell/`ps` poll every 3 s |
 | Auth | `?t=` token → `HttpOnly` cookie | session token injected into the page, required on mutations |
+| Bulk discovery | not built yet — one path at a time | `Detect` button + `--discover` walk |
 | **Never writes into a monitored project** | asserted by the test suite | asserted by the test suite |
 
 Same invariants: project paths are validated (`absolute`, exists, no
@@ -51,6 +54,37 @@ feeds stay readable: they are bucketed by project under sticky headers (in
 registration order, newest first inside each bucket). Click a project's name —
 or the `focused: <name>` pill in the header — to scope both feeds to that one
 project; click again to go back to everything.
+
+### Registering a whole tree at once
+
+One path at a time gets old, so a root directory can be scanned instead:
+
+- **In the dashboard** — type a root folder and press **Detect**. You get a
+  checkbox list of everything found underneath, each row tagged with its
+  reason (`git`, `.opencode/`, `CLAUDE.md`, …); candidates that are already
+  registered come greyed out. Press **Register selected** when the list looks
+  right — nothing is registered until you do.
+- **On the command line** — `--discover ROOT` (repeatable) does the same at
+  startup without asking, because a script has nobody to confirm with, and
+  prints a per-root summary:
+  `[lite] D:/code: 7 registered, 0 already there, 0 failed (76 directories scanned)`.
+  `--depth N` changes how many levels below the root are scanned (default 4).
+
+A directory qualifies when it is the **root of a git repository** or when it
+holds an **agent marker** (`.opencode/`, `.claude/`, `.cursor/`, `.codex/`,
+`.aider/`, `CLAUDE.md`, `AGENTS.md`, `GEMINI.md`, `opencode.json`,
+`.aider.conf.yml`, `.cursorrules`). As soon as something qualifies the walk
+stops there — everything inside belongs to that project — and dependency,
+build and VCS trees (`node_modules`, `.venv`, `build`, `dist`, `target`,
+`.git`, …) are pruned on the way down. Symlinks and directory junctions are
+never followed, each directory is visited once, and a walk is bounded at
+5 000 directories and 100 candidates; hitting a bound is reported as
+`truncated` rather than silently dropping projects.
+
+Discovery only reads: it opens directories and runs `git rev-parse` with
+`GIT_OPTIONAL_LOCKS=0`, writes nothing, and never looks at `opencode.db` or
+any other agent's storage — what it knows comes from what is on disk under
+the root you give it.
 
 ---
 

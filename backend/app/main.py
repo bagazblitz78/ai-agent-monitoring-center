@@ -13,6 +13,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from app.api.health import router as health_router
+from app.api.inspect import install_inspect
 from app.api.settings import install_settings
 from app.api.stream import install_stream
 from app.config import resolve_paths, settings_singleton
@@ -129,6 +130,7 @@ def create_app() -> FastAPI:
     app.add_api_route("/", _root, methods=["GET"])
     install_settings(app.state.api_router)
     install_stream(app.state.api_router)
+    install_inspect(app.state.api_router)
     # The single mount of the guarded router — a second one would register
     # every API route twice and list each of them twice in OpenAPI.
     app.include_router(app.state.api_router)

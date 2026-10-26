@@ -20,8 +20,14 @@ SESSION_COOKIE = "agentscope_session"
 
 @pytest.fixture
 def app(tmp_path, monkeypatch):
-    """A freshly built application isolated to ``tmp_path`` as its data home."""
-    monkeypatch.setenv("AGENTSCOPE_HOME", str(tmp_path))
+    """A freshly built application isolated to ``tmp_path`` as its data home.
+
+    The home sits in a *subdirectory* so the rest of ``tmp_path`` stays free to
+    act as monitored project territory — the path policy refuses to watch
+    anything inside ``AGENTSCOPE_HOME``, so a project under the home itself
+    would (correctly) be rejected.
+    """
+    monkeypatch.setenv("AGENTSCOPE_HOME", str(tmp_path / "agentscope-home"))
     monkeypatch.setattr(config, "SETTINGS", None)
     # Imported after the env is patched: ``app.main`` builds a module-level
     # ``app`` on first import, which must land in the temp home — never the

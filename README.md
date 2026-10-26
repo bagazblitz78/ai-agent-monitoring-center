@@ -96,6 +96,14 @@ the root you give it.
   touch the files themselves.
 - **`POST /api/v1/projects/inspect`** — dry-run a path before registering it:
   exists? readable? git? branch? status counts — completely read-only.
+- **Project discovery** — `POST /api/v1/projects/discover` walks a root
+  directory read-only (dependency/build trees pruned, symlinks never followed,
+  depth 4 by default, capped at 5000 directories / 100 proposals with a
+  `truncated` flag) and proposes git repositories plus agent-marker folders
+  (`.opencode/`, `CLAUDE.md`, …), flagging the ones you already registered.
+  `POST /api/v1/projects/discover/register` then adds the ones you pick in one
+  batch: a duplicate is skipped, one bad path never aborts the rest. Ported
+  from `agentscope_lite.py --discover`.
 - **File monitoring** — one `watchdog` observer per active, watched project with
   500 ms debounce, a rate cap, a 2 MB size cap, a default exclude list
   (`node_modules/`, `.venv/`, `.git/objects`, `.env*`, `*.pem`, `*.key`, …) and
@@ -169,13 +177,26 @@ That single request swaps the token for the session cookie and redirects you to
 A quick round-trip:
 
 ```powershell
+# swap the startup token for the session cookie once (URL printed at startup)
+curl.exe -c jar.txt "http://127.0.0.1:8787/?t=<token>"
+
 # register a project (send the session cookie with every call)
-curl.exe -c jar.txt -X POST http://127.0.0.1:8787/api/v1/projects `
+curl.exe -b jar.txt -X POST http://127.0.0.1:8787/api/v1/projects `
         -H "Content-Type: application/json" `
         -d '{"name":"demo","path":"D:/code/my-repo"}'
 
 curl.exe -b jar.txt http://127.0.0.1:8787/api/v1/health
 curl.exe -b jar.txt "http://127.0.0.1:8787/api/v1/projects/<id>/file-changes"
+
+# find the agent projects under D:/code (read-only walk), then register the
+# ones you picked — duplicates come back as "skipped", not as an error
+curl.exe -b jar.txt -X POST http://127.0.0.1:8787/api/v1/projects/discover `
+        -H "Content-Type: application/json" `
+        -d '{"root":"D:/code"}'
+
+curl.exe -b jar.txt -X POST http://127.0.0.1:8787/api/v1/projects/discover/register `
+        -H "Content-Type: application/json" `
+        -d '{"paths":["D:/code/my-repo","D:/code/other"]}'
 ```
 
 ---
@@ -226,6 +247,8 @@ Consistent envelopes: success `{"data": ..., "meta": {...}}`, failure
 | `GET /api/v1/stream` | SSE event stream, resumable via `Last-Event-ID` |
 | `POST /api/v1/projects/inspect` | validate/inspect an arbitrary path (read-only) |
 | `POST /api/v1/projects/{id}/inspect` | re-inspect a registered project |
+| `POST /api/v1/projects/discover` | scan a root read-only and propose the agent projects under it — always 200, `errors[]` + `messages[]` explain an unusable root |
+| `POST /api/v1/projects/discover/register` | batch-register (≤ 100 paths) → `added` / `skipped` / `failed` + `counts`; a duplicate is skipped, a bad path never aborts the batch |
 | `GET`/`POST /api/v1/projects` | list / register projects |
 | `GET`/`PATCH`/`DELETE /api/v1/projects/{id}` | read / update / unregister (`path` is immutable) |
 | `POST /api/v1/projects/{id}/archive` · `/unarchive` · `/refresh` | lifecycle actions |
@@ -240,7 +263,7 @@ activity, logs, verification, notifications, diff-on-demand — see
 ## Development
 
 ```powershell
-.venv\Scripts\python -m pytest -q        # backend/tests — currently 262 passed, 4 skipped
+.venv\Scripts\python -m pytest -q        # backend/tests — currently 337 passed, 5 skipped
 .venv\Scripts\python -m ruff check .     # lint (line length 100, py311 target)
 ```
 

@@ -29,6 +29,7 @@ __all__ = [
     "ERROR_CODES",
     "PathValidation",
     "is_git_worktree",
+    "is_within",
     "path_key_for",
     "validate_project_path",
 ]
@@ -83,11 +84,18 @@ def _case(text: str) -> str:
     return text.casefold() if _CASEFOLD else text
 
 
-def _is_within(child: Path, parent: Path) -> bool:
+def is_within(child: Path, parent: Path) -> bool:
+    """True when ``child`` is ``parent`` itself or lives underneath it.
+
+    Comparison is casefolded on Windows, where ``D:\\Proj`` and ``d:\\proj`` are
+    the same directory.
+    """
     child_s = _case(str(child))
     parent_s = _case(str(parent)).rstrip("\\/")
-    return child_s == parent_s or child_s.startswith(parent_s + os.sep) or child_s.startswith(
-        parent_s + "/"
+    return (
+        child_s == parent_s
+        or child_s.startswith(parent_s + os.sep)
+        or child_s.startswith(parent_s + "/")
     )
 
 
@@ -140,7 +148,7 @@ def validate_project_path(raw: str, *, must_exist: bool = True) -> PathValidatio
     assert normalized is not None  # unreachable: structural errors returned above
     resolved = Path(os.path.realpath(str(normalized)))
     home = Path(os.path.realpath(str(resolve_paths().home)))
-    if _is_within(resolved, home):
+    if is_within(resolved, home):
         return PathValidation(
             ok=False, path=None, path_key=None, errors=["inside_app_home"]
         )

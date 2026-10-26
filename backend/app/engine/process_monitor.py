@@ -109,11 +109,15 @@ class ProcessMonitor:
             except Exception:  # a failed tick must not kill the loop
                 logger.exception("process monitor tick failed")
 
-    def stop(self) -> None:
-        """Cancel the loop; safe to call twice, or without ``start``."""
+    def stop(self) -> asyncio.Task | None:
+        """Cancel the loop and return its task so callers can await it.
+
+        Safe to call twice, or without ``start`` (then it returns ``None``).
+        """
         task, self._task = self._task, None
         if task is not None:
             task.cancel()
+        return task
 
     # --- one scan -----------------------------------------------------------
 

@@ -40,11 +40,13 @@ def test_health_is_unauthenticated_and_reports_exact_shape(fresh_db):
     assert isinstance(data["uptime_seconds"], float)
     assert data["uptime_seconds"] >= 0
     engine = data["engine"]
-    assert set(engine) == {"queue_depth", "events_processed", "sse_clients"}
+    assert set(engine) == {"queue_depth", "events_processed", "sse_clients", "monitors"}
     assert engine["queue_depth"] == 0 and engine["events_processed"] == 0
     # Live value from the hub attached by create_app; an int >= 0 either way.
     assert isinstance(engine["sse_clients"], int)
     assert engine["sse_clients"] >= 0
+    # No lifespan ran for this client, so the engine reports itself idle.
+    assert engine["monitors"] == {"file": 0, "process": False, "git": False}
 
 
 def test_health_sse_clients_reflect_attached_hub(fresh_db):

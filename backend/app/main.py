@@ -10,6 +10,7 @@ exchange with that frontend fallback.
 
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from app.api.file_changes import install_file_changes
@@ -20,6 +21,7 @@ from app.api.settings import install_settings
 from app.api.stream import install_stream
 from app.config import resolve_paths, settings_singleton
 from app.engine.hub import hub as engine_hub
+from app.engine.supervisor import Supervisor
 from app.errors import install_error_handlers
 from app.middleware import RequestContextMiddleware
 from app.schemas.common import ok
@@ -118,15 +120,34 @@ def _install_frontend(app: FastAPI) -> None:
     app.add_exception_handler(404, handler)
 
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Run the monitoring engine for as long as the application lives.
+
+    Wiring it here (rather than at import time) is what keeps tests and one-off
+    ``create_app()`` callers free of watcher threads: nothing starts until a
+    server actually enters this block, and ``stop()`` on the way out leaves no
+    observer or monitor task behind.
+    """
+    await app.state.supervisor.start(app)
+    try:
+        yield
+    finally:
+        await app.state.supervisor.stop()
+
+
 def create_app() -> FastAPI:
     """Build the fully assembled application."""
     settings = settings_singleton()
-    app = FastAPI(title=settings.app_name, version=settings.version)
+    app = FastAPI(title=settings.app_name, version=settings.version, lifespan=lifespan)
     app.add_middleware(RequestContextMiddleware)
     install_error_handlers(app)
     # The hub the SSE stream fans messages out to, exposed on app.state so the
     # health probe can report its live subscriber count.
     app.state.hub = engine_hub
+    # The engine owner: created (not started) here so project handlers can
+    # reach ``refresh_monitors`` even when the lifespan never runs.
+    app.state.supervisor = Supervisor()
     install_auth(app, load_or_create_token(resolve_paths(settings)))
     # The root route: token exchange when ?t= is present, frontend otherwise.
     app.add_api_route("/", _root, methods=["GET"])

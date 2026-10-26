@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Annotated, Any, Literal
 
 from app.api.deps import get_db
+from app.engine.supervisor import refresh_project_monitors
 from app.errors import Conflict, NotFound, ValidationFailed
 from app.models import Project
 from app.models.base import utc_now
@@ -22,7 +23,7 @@ from app.schemas.common import ok, paged
 from app.schemas.projects import ProjectCreate, ProjectPatch
 from app.services.git_info import inspect_repo
 from app.services.paths import validate_project_path
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -63,7 +64,7 @@ def resource(project: Project) -> dict[str, Any]:
     }
 
 
-def create_project(payload: ProjectCreate, session: DbSession) -> dict[str, Any]:
+def create_project(payload: ProjectCreate, session: DbSession, request: Request) -> dict[str, Any]:
     """``POST /api/v1/projects`` — validate, inspect, then insert one row."""
     validation = validate_project_path(payload.path)
     if not validation.ok:
@@ -98,6 +99,8 @@ def create_project(payload: ProjectCreate, session: DbSession) -> dict[str, Any]
         session.rollback()
         raise Conflict(DUPLICATE_PATH_MESSAGE) from exc
     session.refresh(project)
+    # A brand-new registration must be watched right away, not on restart.
+    refresh_project_monitors(request.app)
     return ok(resource(project))
 
 
@@ -129,7 +132,9 @@ def get_project(project_id: str, session: DbSession) -> dict[str, Any]:
     return ok(resource(_require(session, project_id)))
 
 
-def patch_project(project_id: str, payload: ProjectPatch, session: DbSession) -> dict[str, Any]:
+def patch_project(
+    project_id: str, payload: ProjectPatch, session: DbSession, request: Request
+) -> dict[str, Any]:
     """``PATCH /api/v1/projects/{id}`` — rename and reconfigure, never relocate."""
     project = _require(session, project_id)
     changed = payload.model_dump(exclude_unset=True)
@@ -142,34 +147,39 @@ def patch_project(project_id: str, payload: ProjectPatch, session: DbSession) ->
         setattr(project, field, value)
     session.commit()
     session.refresh(project)
+    # ``watch_enabled`` and the path decide whether this project is watched.
+    refresh_project_monitors(request.app)
     return ok(resource(project))
 
 
-def delete_project(project_id: str, session: DbSession) -> dict[str, Any]:
+def delete_project(project_id: str, session: DbSession, request: Request) -> dict[str, Any]:
     """``DELETE /api/v1/projects/{id}`` — unregister; files on disk stay put."""
     project = _require(session, project_id)
     session.delete(project)
     session.commit()
+    refresh_project_monitors(request.app)  # unregistering stops the watcher
     return ok({"deleted": True})
 
 
-def archive_project(project_id: str, session: DbSession) -> dict[str, Any]:
+def archive_project(project_id: str, session: DbSession, request: Request) -> dict[str, Any]:
     """``POST /api/v1/projects/{id}/archive`` — reversible: excluded from monitoring."""
     project = _require(session, project_id)
     project.status = ARCHIVED
     project.archived_at = utc_now()
     session.commit()
     session.refresh(project)
+    refresh_project_monitors(request.app)  # archived projects are not watched
     return ok(resource(project))
 
 
-def unarchive_project(project_id: str, session: DbSession) -> dict[str, Any]:
+def unarchive_project(project_id: str, session: DbSession, request: Request) -> dict[str, Any]:
     """``POST /api/v1/projects/{id}/unarchive`` — back to ``active``."""
     project = _require(session, project_id)
     project.status = ACTIVE
     project.archived_at = None
     session.commit()
     session.refresh(project)
+    refresh_project_monitors(request.app)  # back to active: watch it again
     return ok(resource(project))
 
 

@@ -67,6 +67,19 @@ def _sse_clients(request: Request) -> int:
     return int(hub.subscriber_count())
 
 
+def _monitor_stats(request: Request) -> dict[str, Any]:
+    """Live engine stats from the supervisor, degrading to "idle" without one."""
+    idle = {"file": 0, "process": False, "git": False}
+    supervisor = getattr(getattr(request.app, "state", None), "supervisor", None)
+    if supervisor is None:
+        return idle
+    try:
+        return supervisor.stats()
+    except Exception:
+        logger.warning("health check could not read monitor stats", exc_info=True)
+        return idle
+
+
 @router.get("/api/v1/health")
 def health(request: Request) -> JSONResponse:
     """Report liveness without authentication; degraded checks still return 200."""
@@ -80,11 +93,14 @@ def health(request: Request) -> JSONResponse:
                 "uptime_seconds": time.monotonic() - _STARTED_AT,
                 # ``sse_clients`` is read live from the hub; ``queue_depth`` and
                 # ``events_processed`` are engine counters nothing tracks yet,
-                # so they stay at their zero defaults.
+                # so they stay at their zero defaults. ``monitors`` reports how
+                # many watchers are running and whether the process/git loops
+                # are scheduled (all zero/false before the lifespan starts).
                 "engine": {
                     "queue_depth": 0,
                     "events_processed": 0,
                     "sse_clients": _sse_clients(request),
+                    "monitors": _monitor_stats(request),
                 },
             }
         )

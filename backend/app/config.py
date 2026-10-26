@@ -31,6 +31,10 @@ class Settings(BaseSettings):
     auth_mode: Literal["token", "off"] = "token"
     debug: bool = False
     allow_non_localhost: bool = False
+    #: Turn the monitoring engine off entirely: no file/process/git watchers.
+    #: Tests set it so a client can never spawn watcher threads behind a test's
+    #: back; production leaves it at the default (monitors on).
+    disable_monitors: bool = False
 
 
 @dataclass(frozen=True)

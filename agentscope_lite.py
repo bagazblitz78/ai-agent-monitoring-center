@@ -155,7 +155,8 @@ def matches_agent(matchers: list[str], name: str, cmdline: str) -> bool:
 def validate_project_path(raw: str) -> dict:
     """Return ``{"path", "errors"}`` for a candidate project directory."""
     errors: list[str] = []
-    text = (raw or "").strip()
+    # trim whitespace and the quotes people paste along with a path
+    text = (raw or "").strip().strip("\"'`").strip()
     if not text:
         return {"path": "", "errors": ["required"]}
 
@@ -871,6 +872,7 @@ INDEX_HTML = r"""<!doctype html>
   button.ghost:hover{color:var(--text);border-color:var(--muted)}
   button:hover{filter:brightness(1.07)}
   .err{color:#F0A19A;font-size:12.5px;min-height:18px;margin-top:6px}
+  .err.ok{color:#9BE3C2}
   table{width:100%;border-collapse:collapse;font-size:13px}
   th{text-align:left;font-size:11px;letter-spacing:.6px;text-transform:uppercase;
      color:var(--muted);font-weight:600;padding:7px 8px;border-bottom:1px solid var(--border)}
@@ -987,13 +989,30 @@ async function api(path, opts = {}) {
   const res = await fetch(path, Object.assign({}, opts, {headers}));
   const body = await res.json().catch(() => ({}));
   if (!res.ok) {
-    const msg = (body.error && (body.error.message || (body.error.errors || []).join(", ")));
-    throw new Error(msg || ("HTTP " + res.status));
+    const err = body.error || {};
+    const codes = err.errors || [];
+    const reasons = codes.map(code => WHY[code] || code);
+    const message = reasons.length ? reasons.join(" · ")
+                                   : (err.message || "HTTP " + res.status);
+    const failure = new Error(message);
+    failure.codes = codes;
+    throw failure;
   }
   return body.data;
 }
 
 const $ = id => document.getElementById(id);
+
+// server-side error codes -> something a human can act on
+const WHY = {
+  "required": "type a directory path first",
+  "path must be absolute": "use an absolute path, e.g. D:\\code\\my-repo",
+  "traversal": "the path must not contain ..",
+  "not_found": "that directory does not exist here",
+  "not_a_directory": "that path is a file, not a directory",
+  "permission_denied": "that directory cannot be read (permission denied)",
+  "already_registered": "that project is already registered",
+};
 
 function render(s) {
   $("status").textContent = "live · " + s.health.status;
@@ -1074,8 +1093,9 @@ async function tick() {
 
 $("add-form").onsubmit = async ev => {
   ev.preventDefault();
-  const input = $("path"), error = $("add-error");
-  error.textContent = "";
+  const input = $("path"), note = $("add-error");
+  note.className = "err";
+  note.textContent = "checking…";
   try {
     const data = await api("/api/projects", {
       method: "POST",
@@ -1083,9 +1103,15 @@ $("add-form").onsubmit = async ev => {
       body: JSON.stringify({path: input.value}),
     });
     input.value = "";
-    if (!data.ok) error.textContent = (data.errors || []).join(", ");
+    if (data.ok) {
+      note.className = "err ok";
+      note.textContent = "registered " + data.project.path;
+    }
     await tick();
-  } catch (e) { error.textContent = e.message; }
+  } catch (e) {
+    note.className = "err";
+    note.textContent = e.message;
+  }
 };
 
 setInterval(tick, 2000);

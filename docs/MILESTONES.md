@@ -45,13 +45,13 @@ Depends on: M1 approval.
 
 ---
 
-## M3 — Project and process monitoring — ⬜ not started
+## M3 — Project and process monitoring — 🔶 in progress (2026-10-26)
 
 Depends on: M2.
 
 - [x] Path validation service (`realpath`, existence, readability, non-directory rejection, traversal rejection)
 - [x] `POST /api/v1/projects/inspect` → exists? readable? git? branch? (no writes)
-- [ ] Project CRUD (create/list/get/patch/archive/delete = unregister only, files untouched)
+- [x] Project CRUD (create/list/get/patch/archive/delete = unregister only, files untouched)
 - [x] Git service: branch, status counts, modified/untracked, last N commits, diff-on-demand
 - [ ] `GitMonitor` polling loop emitting `git.commit` events
 - [ ] `ProcessMonitor`: registered agent matchers → PID discovery, snapshots (cpu/mem/ppid/start time), redacted cmdline, ambiguous-match → `needs_confirmation`
@@ -197,7 +197,7 @@ M6 starts once the OpenAPI contract is frozen (end of M2) and completes against 
 
 | Date | Item | Detail | Approval needed? |
 |---|---|---|---|
-| — | none yet | — | — |
+| 2026-10-26 | M3 plan: PATCH `path` rejection code | Plan asked for envelope code `path_immutable`; M2's invariant test forces 422 → `validation_error`. The domain code now travels in `details: [{"field": "path", "code": "path_immutable"}]`, matching how create delivers `traversal`/`not_found`. M2 invariant left intact. | no |
 
 ## Test Status Log
 

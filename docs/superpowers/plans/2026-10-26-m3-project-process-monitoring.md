@@ -126,11 +126,13 @@
   - `PATCH /api/v1/projects/{id}` → `name?`, `watch_enabled?`, `watch_rules_json?` (JSON-string object validated: must be an object, ≤ 4096 chars), `in_project_reporting?`; unknown field → 422; returns updated resource; `path` is **immutable** (field present → 422 `path_immutable`).
   - `DELETE /api/v1/projects/{id}` → unregister: row gone, **zero files touched on disk** (snapshot assertion), 204-equivalent → use `{"data": {"deleted": true}, "meta": {}}` with 200 (envelope consistency over bare 204); second delete → 404. Also covered: `status=archived` PATCH-equivalent via `POST /api/v1/projects/{id}/archive` is **not** required — archive via `PATCH` of `status`? **No**: keep `status` out of PATCH; archive = `POST /api/v1/projects/{id}/archive` and unarchive = `POST /api/v1/projects/{id}/unarchive` (explicit actions, `status` transitions `active ↔ archived`, archived projects excluded from default list and from monitoring).
   - `POST /api/v1/projects/{id}/refresh` → re-runs `inspect_repo`, updates `current_branch`/`is_git`, returns resource (ARCHITECTURE §8).
-- [ ] **Step 1: Failing tests**: create → 201-equivalent 200 with envelope; duplicate path → 409; traversal path → 422 with error codes; non-git create → `is_git=false`; list pagination (`page_size=1` of 3 → 1 item, `meta.total=3`); PATCH name ok / unknown key 422 / `path` immutability 422; archive → excluded from default list, still fetchable by id with `status=archived`, unarchive restores; delete → row gone + **file mtime/hash snapshot unchanged**; refresh updates branch after test repo creates a new branch (repo-local config only); unknown ids → 404; all unauthenticated → 401.
-- [ ] **Step 2: Confirm failure.**
-- [ ] **Step 3: Implement.**
-- [ ] **Step 4: Tests + ruff PASS.**
-- [ ] **Step 5: Commit** — `feat: add project registration and management API`
+- [x] **Step 1: Failing tests**: create → 201-equivalent 200 with envelope; duplicate path → 409; traversal path → 422 with error codes; non-git create → `is_git=false`; list pagination (`page_size=1` of 3 → 1 item, `meta.total=3`); PATCH name ok / unknown key 422 / `path` immutability 422; archive → excluded from default list, still fetchable by id with `status=archived`, unarchive restores; delete → row gone + **file mtime/hash snapshot unchanged**; refresh updates branch after test repo creates a new branch (repo-local config only); unknown ids → 404; all unauthenticated → 401.
+- [x] **Step 2: Confirm failure.**
+- [x] **Step 3: Implement.**
+- [x] **Step 4: Tests + ruff PASS.**
+- [x] **Step 5: Commit** — `feat: add project registration and management API`
+
+> **Ruling deviation (recorded for reviewers):** the plan says a PATCH carrying `path` fails with code `path_immutable`. M2's invariant test (`test_errors.py::test_api_error_status_mapping`) requires every non-500 `ApiError` to use the canonical code for its status — a 422 must say `validation_error` so a raised 422 and a FastAPI body-validation 422 are indistinguishable to clients. The endpoint therefore raises `ValidationFailed` (422 `validation_error`) with `details: [{"field": "path", "code": "path_immutable"}]` — the same delivery mechanism the create endpoint already uses for `traversal`/`not_found`. The M2 invariant was left untouched rather than weakened.
 
 ---
 

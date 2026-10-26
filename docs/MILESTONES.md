@@ -49,7 +49,7 @@ Depends on: M1 approval.
 
 Depends on: M2.
 
-- [ ] Path validation service (`realpath`, existence, readability, non-directory rejection, traversal rejection)
+- [x] Path validation service (`realpath`, existence, readability, non-directory rejection, traversal rejection)
 - [ ] `POST /api/v1/projects/inspect` → exists? readable? git? branch? (no writes)
 - [ ] Project CRUD (create/list/get/patch/archive/delete = unregister only, files untouched)
 - [ ] Git service: branch, status counts, modified/untracked, last N commits, diff-on-demand

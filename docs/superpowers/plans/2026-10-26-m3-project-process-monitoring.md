@@ -103,11 +103,13 @@
   - `schemas/projects.py`: `class InspectRequest(BaseModel)` `path: str = Field(..., min_length=1, max_length=4096)`, `model_config = ConfigDict(extra="forbid")`.
   - `POST /api/v1/projects/inspect` → `{"data": {"input": str, "path": <abs>|null, "path_key": str|null, "exists": bool, "is_directory": bool, "readable": bool, "is_git": bool, "branch": str|null, "default_branch": str|null, "errors": [codes]}, "meta": {}}`. **Writes nothing** (assert: no `projects` row created, no files created). HTTP 200 even for invalid paths (the payload carries `errors`); 422 only for body-shape violations.
   - `POST /api/v1/projects/{id}/inspect` → same payload for a registered project's stored path; unknown id → 404 `not_found`.
-- [ ] **Step 1: Failing tests**: valid tmp dir → 200 `exists/is_directory/readable true`; traversal input → 200 with `errors=["traversal"]` and `path=None`; non-existent → `not_found` in errors; git fixture repo → `is_git true` + branch; no DB rows created before/after (count query); unknown `{id}` → 404 envelope; unauthenticated → 401; `extra` body field → 422.
-- [ ] **Step 2: Confirm failure.**
-- [ ] **Step 3: Implement** and mount on `app.state.api_router` in `create_app`.
-- [ ] **Step 4: Tests + ruff PASS** (auth-sweep test from M2 must still pass — new routes are guarded).
-- [ ] **Step 5: Commit** — `feat: add project inspect endpoints`
+- [x] **Step 1: Failing tests**: valid tmp dir → 200 `exists/is_directory/readable true`; traversal input → 200 with `errors=["traversal"]` and `path=None`; non-existent → `not_found` in errors; git fixture repo → `is_git true` + branch; no DB rows created before/after (count query); unknown `{id}` → 404 envelope; unauthenticated → 401; `extra` body field → 422.
+- [x] **Step 2: Confirm failure.**
+- [x] **Step 3: Implement** and mount on `app.state.api_router` in `create_app`.
+- [x] **Step 4: Tests + ruff PASS** (auth-sweep test from M2 must still pass — new routes are guarded).
+- [x] **Step 5: Commit** — `feat: add project inspect endpoints`
+
+> **Fixture note:** the shared `app` fixture in `backend/tests/conftest.py` now points `AGENTSCOPE_HOME` at `tmp_path / "agentscope-home"` instead of `tmp_path` itself. The path policy refuses to watch anything inside the app home, so test projects must live outside it — otherwise every M3 registration would be (correctly) rejected as `inside_app_home`.
 
 ---
 

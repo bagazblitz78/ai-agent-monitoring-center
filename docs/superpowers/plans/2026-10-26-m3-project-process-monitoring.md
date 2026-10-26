@@ -221,11 +221,11 @@
 - Produces:
   - `GET /api/v1/projects/{id}/file-changes?page&page_size&action&path_prefix&q&source` → `{"data": {"items": [FileChange…], …}, "meta": {total, page, page_size}}` — items ordered `ts`/`id` newest-first, each item carries `id, ts, path_relative, action, size_bytes, git_status, source`; unknown project → 404; `page_size > 200` → 422; archived project still readable.
   - Empty result → `items: []`, `meta.total: 0` (not an error).
-- [ ] **Step 1: Failing tests**: seed 5 rows across 2 projects → pagination math + `total` scoped to the project; `action` filter; `path_prefix` filter; other project's rows never leak (security: cross-project isolation); 404; 422 over-cap; 401 unauthenticated; empty project → empty items.
-- [ ] **Step 2: Confirm failure.**
-- [ ] **Step 3: Implement.**
-- [ ] **Step 4: Tests + ruff PASS.**
-- [ ] **Step 5: Commit** — `feat: add file changes listing API`
+- [x] **Step 1: Failing tests**: seed 5 rows across 2 projects → pagination math + `total` scoped to the project; `action` filter; `path_prefix` filter; other project's rows never leak (security: cross-project isolation); 404; 422 over-cap; 401 unauthenticated; empty project → empty items.
+- [x] **Step 2: Confirm failure.**
+- [x] **Step 3: Implement.**
+- [x] **Step 4: Tests + ruff PASS.**
+- [x] **Step 5: Commit** — `feat: add file changes listing API`
 
 ---
 

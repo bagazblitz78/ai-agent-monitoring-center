@@ -56,8 +56,8 @@ Depends on: M2.
 - [x] `GitMonitor` polling loop emitting `git.commit` events
 - [x] `ProcessMonitor`: registered agent matchers → PID discovery, snapshots (cpu/mem/ppid/start time), redacted cmdline, ambiguous-match → `needs_confirmation`
 - [x] `FileMonitor` (watchdog) with default exclude list, 500 ms debounce, event cap, escape-drop on symlink
-- [ ] `file_changes` API with pagination
-- [ ] Multi-agent-per-project support and non-git project support
+- [x] `file_changes` API with pagination
+- [x] Multi-agent-per-project support and non-git project support
 - [ ] Inaccessible-directory and permission-error handling → surfaced status, no crash
 
 **Tests:** path traversal (3 vectors), non-existent path, non-git project, temp git repo status/commit detection, spawned dummy process discovery + snapshot + exit detection, watchdog create/modify events with debounce, excluded `.env` not reported, symlink escape dropped, permission-denied path.
@@ -199,6 +199,7 @@ M6 starts once the OpenAPI contract is frozen (end of M2) and completes against 
 |---|---|---|---|
 | 2026-10-26 | M3 plan: PATCH `path` rejection code | Plan asked for envelope code `path_immutable`; M2's invariant test forces 422 → `validation_error`. The domain code now travels in `details: [{"field": "path", "code": "path_immutable"}]`, matching how create delivers `traversal`/`not_found`. M2 invariant left intact. | no |
 | 2026-10-26 | M3 git polling: strictly read-only `git status` | The plan specifies `git status --porcelain`; plain `git status` also *rewrites* `.git/index` (stat cache) inside the watched project, breaking the "monitor never writes" invariant. `inspect_repo` now runs it with `GIT_OPTIONAL_LOCKS=0`, asserted byte-for-byte by `test_git_monitor.py::test_tick_never_touches_the_repository`. | no |
+| 2026-10-26 | M3 `file-changes` envelope | The plan writes the response as `{"data": {"items": [...]}, "meta": {page, page_size, total}}`, while M2's `paged()` helper (used by `GET /api/v1/projects`) puts the rows directly in `data`. Implemented exactly as the plan words it; flagged here so the two list shapes can be reconciled deliberately rather than by accident. | no |
 
 ## Test Status Log
 

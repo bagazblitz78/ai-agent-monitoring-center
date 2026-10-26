@@ -14,6 +14,40 @@ per-user data directory, and talks to nothing outside `127.0.0.1`.
 
 ---
 
+## One-file edition: `agentscope_lite.py`
+
+Want the monitoring without the stack? **`agentscope_lite.py`** is the same
+idea compressed into a single Python file that uses **only the standard
+library** — no `pip install`, no database setup, no build step, no second
+process to manage. Run it and a dashboard opens in your browser:
+
+```bash
+python agentscope_lite.py                                  # opens http://127.0.0.1:8790
+python agentscope_lite.py --project D:/code/my-repo         # pre-register a project
+python agentscope_lite.py --no-browser --port 8791          # headless
+python agentscope_lite.py --match opencode --match claude   # custom agent matchers
+```
+
+| | Full backend (this repo) | `agentscope_lite.py` |
+|---|---|---|
+| UI | React SPA (M6, not built yet) | embedded HTML/CSS/JS dashboard |
+| Server | FastAPI + uvicorn + Alembic | `http.server` in-process, 127.0.0.1 only |
+| Storage | SQLite (WAL) + migrations | one JSON file, `~/.agentscope_lite.json` |
+| File watching | `watchdog` events | polling every 2 s |
+| Git | `GitPython`, 5 s poll | `git` CLI, 5 s poll, `GIT_OPTIONAL_LOCKS=0` |
+| Processes | `psutil` matchers | PowerShell/`ps` poll every 3 s |
+| Auth | `?t=` token → `HttpOnly` cookie | session token injected into the page, required on mutations |
+| **Never writes into a monitored project** | asserted by the test suite | asserted by the test suite |
+
+Same invariants: project paths are validated (`absolute`, exists, no
+traversal, must be a directory), `.env`/`*.pem`/`*.key` and build trees are
+excluded from file events, author e-mails and secret-looking command-line
+values are redacted before anything is stored, and the monitor itself is never
+listed among the agent processes. Run `python agentscope_lite.py --help` for
+all flags.
+
+---
+
 ## What works today
 
 - **Project registration** — add a directory, and AgentScope validates the path

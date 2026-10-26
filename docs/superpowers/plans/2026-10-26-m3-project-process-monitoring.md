@@ -147,13 +147,13 @@
   - `file_monitor.py`: `class FileMonitor` with `__init__(self, root: Path, project_id: str, session_factory, *, excludes: list[str] | None = None, debounce_s: float = 0.5, max_events_per_path_per_s: float = 10, max_file_bytes: int = 2 * 1024 * 1024)`, `start()/stop()`, plus `default_excludes()` matching ARCHITECTURE §7 exactly.
     - watchdog `FileSystemEventHandler`; on event: resolve `realpath` — **escape (outside `root`) → drop**; skip if any exclude pattern matches relative POSIX path (patterns: dir prefixes `node_modules/`, `.venv/`, `venv/`, `__pycache__/`, `.git/objects`, `dist/`, `build/`, `target/`, `.next/`, suffix `*.lock`, globs `.env*`, `*.pem`, `id_rsa*`, `*.key`); skip if size > `max_file_bytes` (size read on created/modified; missing file on delete → size `None`); debounce per path (500 ms) and rate cap (10/s/path) → overflow drops are **counted** (`self.dropped`), not raised.
     - each accepted change → `FileChange` row (`path_relative` POSIX-style, `action` `created|modified|deleted|renamed`, `source="watchdog"`) **and** `persist_event(type="file.changed")`; renames mapped (`moved` → `renamed`, dest path used).
-- [ ] **Step 1: Failing tests**:
+- [x] **Step 1: Failing tests**:
   - `test_persist_event`: inserts row + returns seq; duplicate `event_uid` → single row, no exception.
   - `test_file_monitor`: helper `wait_for(predicate, timeout=5)`; in `tmp_path` project: create file → `file_changes` row `created`; modify → `modified`; `.env` write → **no** row; write inside `node_modules/` → no row; 3 rapid writes to one path within 500 ms → ≤ the debounce-allowed rows (coalesced); >10 writes in a second → rows for that path ≤ 10 + `dropped > 0`; 3 MB file → no row; symlink escape (create symlink in root pointing outside; **skip when `os.symlink` unavailable on Windows**) → event for the escaped target is dropped; `stop()` → subsequent writes produce no rows (bounded wait).
-- [ ] **Step 2: Confirm failure.**
-- [ ] **Step 3: Implement** — watchdog runs its own thread; DB writes use a **fresh short-lived session** from `session_factory` per batch (never the request-scoped session); observer daemonized, `stop()` joins.
-- [ ] **Step 4: Tests + ruff PASS** (watchdog tests may take a few seconds — keep total suite well under 60 s).
-- [ ] **Step 5: Commit** — `feat: add file monitor with debounce, excludes and event persistence`
+- [x] **Step 2: Confirm failure.**
+- [x] **Step 3: Implement** — watchdog runs its own thread; DB writes use a **fresh short-lived session** from `session_factory` per batch (never the request-scoped session); observer daemonized, `stop()` joins.
+- [x] **Step 4: Tests + ruff PASS** (watchdog tests may take a few seconds — keep total suite well under 60 s).
+- [x] **Step 5: Commit** — `feat: add file monitor with debounce, excludes and event persistence`
 
 ---
 
@@ -174,7 +174,7 @@
     6. multiple candidates → no `confirmed_pid` change, emit `agent.match_ambiguous` with `payload.state="needs_confirmation"` and `payload.candidate_pids` — **deduped** while the candidate set is unchanged (R-3.3);
     7. zero candidates but `confirmed_pid` set and PID gone → `status="stopped"`, `status_source="observed"`, emit `agent.process_exited`, clear `confirmed_pid`;
     8. `psutil.AccessDenied` / `ZombieProcess` on a candidate → snapshot fields `None`, agent `status="unknown"`; never raises.
-- [ ] **Step 1: Failing tests** (use a **spawned dummy process**: `sys.executable -c "import time; time.sleep(60)"` with a unique marker string in argv, terminated in teardown; register an `Agent` with `match_kind="cmdline_regex", match_value=<marker>`):
+- [x] **Step 1: Failing tests** (use a **spawned dummy process**: `sys.executable -c "import time; time.sleep(60)"` with a unique marker string in argv, terminated in teardown; register an `Agent` with `match_kind="cmdline_regex", match_value=<marker>`):
   - discovery: after `tick()`, `confirmed_pid` equals the dummy's pid and a `process_snapshots` row exists with redacted cmdline (marker still visible — it's the matcher — but token-like args masked);
   - exit detection: kill the dummy, `tick()` → `status="stopped"`, event `agent.process_exited`, `confirmed_pid` NULL;
   - ambiguity: two dummies sharing the marker → no `confirmed_pid`, `agent.match_ambiguous` event with `state=needs_confirmation`, second `tick()` does **not** duplicate the event;
@@ -182,10 +182,10 @@
   - access-denied: inject a fake `process_iter` raising `psutil.AccessDenied` for one pid → `status="unknown"`, no exception;
   - invalid regex matcher → `last_error="invalid_matcher"`, others still processed;
   - non-matching process never snapshotted.
-- [ ] **Step 2: Confirm failure.**
-- [ ] **Step 3: Implement** — `tick()` fully synchronous and injectable; `start()` schedules `tick` on an asyncio loop with `asyncio.sleep(interval_s)`.
-- [ ] **Step 4: Tests + ruff PASS** (terminate dummies in fixtures even on failure — `try/finally`).
-- [ ] **Step 5: Commit** — `feat: add process monitor with matcher scoping and ambiguity events`
+- [x] **Step 2: Confirm failure.**
+- [x] **Step 3: Implement** — `tick()` fully synchronous and injectable; `start()` schedules `tick` on an asyncio loop with `asyncio.sleep(interval_s)`.
+- [x] **Step 4: Tests + ruff PASS** (terminate dummies in fixtures even on failure — `try/finally`).
+- [x] **Step 5: Commit** — `feat: add process monitor with matcher scoping and ambiguity events`
 
 ---
 

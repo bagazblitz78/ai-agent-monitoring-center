@@ -54,8 +54,8 @@ Depends on: M2.
 - [x] Project CRUD (create/list/get/patch/archive/delete = unregister only, files untouched)
 - [x] Git service: branch, status counts, modified/untracked, last N commits, diff-on-demand
 - [ ] `GitMonitor` polling loop emitting `git.commit` events
-- [ ] `ProcessMonitor`: registered agent matchers → PID discovery, snapshots (cpu/mem/ppid/start time), redacted cmdline, ambiguous-match → `needs_confirmation`
-- [ ] `FileMonitor` (watchdog) with default exclude list, 500 ms debounce, event cap, escape-drop on symlink
+- [x] `ProcessMonitor`: registered agent matchers → PID discovery, snapshots (cpu/mem/ppid/start time), redacted cmdline, ambiguous-match → `needs_confirmation`
+- [x] `FileMonitor` (watchdog) with default exclude list, 500 ms debounce, event cap, escape-drop on symlink
 - [ ] `file_changes` API with pagination
 - [ ] Multi-agent-per-project support and non-git project support
 - [ ] Inaccessible-directory and permission-error handling → surfaced status, no crash

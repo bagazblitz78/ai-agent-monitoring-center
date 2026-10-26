@@ -27,6 +27,10 @@ _DRIVE_RE = re.compile(r"^[A-Za-z]:")
 _MAX_FILES_PER_COMMIT = 100
 _MAX_ERROR_LEN = 200
 
+#: Passed to ``git status`` so it may not take git's *optional* locks — see the
+#: comment at the call site. GitPython merges this into the process environment.
+_READ_ONLY_ENV = {"GIT_OPTIONAL_LOCKS": "0"}
+
 
 @dataclass
 class GitCommitInfo:
@@ -151,7 +155,10 @@ def inspect_repo(path: Path, *, commits: int = 5) -> GitInfo:
 
     info = GitInfo(is_git=True)
     try:
-        _apply_status(info, repo.git.status("--porcelain"))
+        # ``GIT_OPTIONAL_LOCKS=0`` keeps the poll strictly read-only: plain
+        # ``git status`` rewrites ``.git/index`` (stat cache) even when nothing
+        # changed, and a monitor must not modify the project it watches.
+        _apply_status(info, repo.git.status("--porcelain", env=_READ_ONLY_ENV))
         info.branch = _branch(repo)
         info.default_branch = _default_branch(repo)
         info.last_commits = _recent_commits(repo, commits)

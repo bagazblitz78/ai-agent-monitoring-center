@@ -7,12 +7,15 @@ no build step, no second process to manage.
 
     python agentscope_lite.py                              # start + open browser
     python agentscope_lite.py --project D:\\code\\my-repo    # pre-register a project
+    python agentscope_lite.py --discover D:\\code            # register what is under D:\\code
     python agentscope_lite.py --no-browser --port 8790     # headless
 
 What it does
 ------------
 * registers project directories, validating them read-only (absolute, existing,
   no traversal, must be a directory),
+* scans a root directory for the agent projects underneath it and registers
+  them in one batch (``--discover``, or the dashboard's Detect button),
 * watches them for file changes by polling — it never writes, deletes or
   mutates a single byte inside a monitored project,
 * polls git with ``GIT_OPTIONAL_LOCKS=0`` (so even ``git status`` cannot rewrite
@@ -1065,7 +1068,7 @@ INDEX_HTML = r"""<!doctype html>
   .find .rel{flex:1;min-width:0;color:var(--muted);font-size:11.5px;
              overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .find.reg .name{color:var(--muted);text-decoration:line-through}
-  .findings .err{margin-top:0;min-height:0}
+  .findings-foot{display:flex;align-items:center;gap:10px}
   .findings-note{color:#F3C88B;font-size:12px}
   table{width:100%;border-collapse:collapse;font-size:13px}
   th{text-align:left;font-size:11px;letter-spacing:.6px;text-transform:uppercase;
@@ -1139,7 +1142,6 @@ INDEX_HTML = r"""<!doctype html>
         <div class="findings-note" id="findings-note" hidden></div>
         <div class="findings-foot">
           <button type="button" id="register-selected" disabled>Register selected</button>
-          <span class="err" id="findings-error"></span>
         </div>
       </div>
       <table>
@@ -1784,6 +1786,39 @@ class LiteApp:
 # CLI
 # --------------------------------------------------------------------------
 
+def register_discovered(state: State, roots: list[str], depth: int | None = None) -> dict:
+    """Headless startup path: scan every root and register what is underneath.
+
+    The dashboard asks for confirmation; a command line has nobody to ask, so
+    everything found is registered and the summary is printed for the operator.
+    Returns ``{"roots", "scanned", "added", "skipped", "failed"}``.
+    """
+    summary = {"roots": 0, "scanned": 0, "added": 0, "skipped": 0, "failed": 0}
+    for root in roots:
+        found = state.discover(root) if depth is None else state.discover(root, depth=depth)
+        if found["errors"]:
+            print(f"[lite] cannot scan {root!r}: {', '.join(found['errors'])}",
+                  file=sys.stderr)
+            continue
+        summary["roots"] += 1
+        summary["scanned"] += found["scanned"]
+        already = [c for c in found["candidates"] if c["already_registered"]]
+        pending = [c["path"] for c in found["candidates"] if not c["already_registered"]]
+        result = state.register_many(pending)
+        counts = result["counts"]
+        summary["added"] += counts["added"]
+        summary["skipped"] += counts["skipped"] + len(already)
+        summary["failed"] += counts["failed"]
+        note = " — the walk hit its limit" if found["truncated"] else ""
+        print(f"[lite] {root}: {counts['added']} registered, "
+              f"{counts['skipped'] + len(already)} already there, "
+              f"{counts['failed']} failed ({found['scanned']} directories scanned){note}")
+        for failure in result["failed"]:
+            print(f"[lite]   {failure['path']!r}: {', '.join(failure['errors'])}",
+                  file=sys.stderr)
+    return summary
+
+
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog="agentscope_lite.py",
@@ -1791,6 +1826,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument("--project", action="append", default=[], metavar="PATH",
                         help="register this project directory at startup (repeatable)")
+    parser.add_argument("--discover", action="append", default=[], metavar="ROOT",
+                        help="scan this directory at startup and register the agent "
+                             "projects found underneath it (repeatable)")
+    parser.add_argument("--depth", type=int, default=None, metavar="N",
+                        help=f"levels below each --discover root to scan "
+                             f"(default {DISCOVER_DEPTH})")
     parser.add_argument("--port", type=int, default=8790,
                         help="preferred port (default 8790, next free port is used)")
     parser.add_argument("--no-browser", action="store_true",
@@ -1814,6 +1855,9 @@ def main(argv: list[str] | None = None) -> int:
         if not result["ok"]:
             print(f"[lite] could not register {raw!r}: {', '.join(result['errors'])}",
                   file=sys.stderr)
+    if args.discover:
+        # before the monitors start, so the very first scan already has baselines
+        register_discovered(app.state, args.discover, args.depth)
 
     app.start_monitors()
     app.serve(args.port, open_browser=not args.no_browser, verbose=args.verbose)

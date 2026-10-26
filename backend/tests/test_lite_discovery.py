@@ -218,3 +218,73 @@ def test_windows_paths_with_quotes_and_spaces_still_resolve(tmp_path):
 
     assert result["errors"] == []
     assert result["candidates"][0]["path"] == os.path.realpath(str(repo))
+
+
+# -- CLI --------------------------------------------------------------------
+
+def test_parse_args_takes_roots_and_a_depth():
+    args = lite.parse_args(["--discover", r"D:\one", "--discover", r"D:\two",
+                            "--depth", "2"])
+
+    assert args.discover == [r"D:\one", r"D:\two"]
+    assert args.depth == 2
+    assert lite.parse_args([]).discover == []
+    assert lite.parse_args([]).depth is None  # the built-in depth applies
+
+
+def test_startup_discovery_registers_everything_under_each_root(tmp_path):
+    _git(tmp_path / "alpha")
+    _git(tmp_path / "nested" / "beta")
+    state = lite.State(tmp_path / "data.json")
+
+    summary = lite.register_discovered(state, [str(tmp_path)])
+
+    assert summary["roots"] == 1
+    assert summary["added"] == 2
+    assert summary["skipped"] == 0 and summary["failed"] == 0
+    assert {p["name"] for p in state.projects} == {"alpha", "beta"}
+
+    again = lite.register_discovered(state, [str(tmp_path)])
+
+    assert again["added"] == 0 and again["skipped"] == 2
+    assert len(state.projects) == 2  # never registered twice
+
+
+def test_startup_discovery_survives_a_root_that_cannot_be_scanned(tmp_path, capsys):
+    state = lite.State(tmp_path / "data.json")
+
+    summary = lite.register_discovered(state, [str(tmp_path / "nope"), str(tmp_path)])
+
+    assert summary["roots"] == 1
+    assert "cannot scan" in capsys.readouterr().err
+
+
+def test_startup_discovery_honours_the_depth_flag(tmp_path):
+    _git(tmp_path / "a" / "b" / "deep")
+    state = lite.State(tmp_path / "data.json")
+
+    summary = lite.register_discovered(state, [str(tmp_path)], depth=1)
+
+    assert summary["added"] == 0
+    assert state.projects == []
+
+
+def test_main_discovers_before_it_serves(tmp_path, monkeypatch):
+    """``--discover`` must finish registering before the monitors start."""
+    _git(tmp_path / "alpha")
+    seen: dict = {}
+
+    monkeypatch.setattr(lite.LiteApp, "start_monitors",
+                        lambda self: seen.setdefault("monitors", True))
+    monkeypatch.setattr(
+        lite.LiteApp, "serve",
+        lambda self, port, open_browser, verbose=False: seen.setdefault(
+            "served", [p["name"] for p in self.state.projects]),
+    )
+
+    code = lite.main(["--discover", str(tmp_path), "--no-browser",
+                      "--data", str(tmp_path / "data.json")])
+
+    assert code == 0
+    assert seen.get("monitors") is True
+    assert seen["served"] == ["alpha"]

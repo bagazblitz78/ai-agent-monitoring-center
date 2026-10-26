@@ -699,6 +699,33 @@ class State:
             self.scanner.take_baseline(pid, resolved)
         return {"ok": True, "project": project}
 
+    def discover(self, root: str, depth: int = DISCOVER_DEPTH) -> dict:
+        """Scan a root directory read-only and report the projects under it."""
+        with self.lock:
+            registered = [project["path"] for project in self.projects]
+        return discover_candidates(root, depth=depth, registered=registered)
+
+    def register_many(self, paths: list[str]) -> dict:
+        """Register several candidates; one bad path never aborts the rest."""
+        added: list[dict] = []
+        skipped: list[dict] = []
+        failed: list[dict] = []
+        for raw in paths:
+            result = self.add_project(raw)
+            if result["ok"]:
+                added.append(result["project"])
+            elif "already_registered" in result["errors"]:
+                skipped.append({"path": raw, "reason": "already_registered"})
+            else:
+                failed.append({"path": raw, "errors": list(result["errors"])})
+        return {
+            "added": added,
+            "skipped": skipped,
+            "failed": failed,
+            "counts": {"added": len(added), "skipped": len(skipped),
+                       "failed": len(failed)},
+        }
+
     def remove_project(self, pid: str) -> bool:
         with self.lock:
             before = len(self.projects)
@@ -1460,6 +1487,34 @@ class ApiHandler(BaseHTTPRequestHandler):
                 return self._error(422, "validation_error",
                                    "That path cannot be registered.", result["errors"])
             return self._json({"data": result})
+        if path == "/api/projects/discover":
+            body = self._body()
+            if body is None:
+                return
+            depth = body.get("depth")
+            if depth is None:
+                depth_arg: dict = {}
+            else:
+                try:
+                    depth_arg = {"depth": int(depth)}
+                except (TypeError, ValueError):
+                    return self._error(422, "validation_error",
+                                       "Depth must be a whole number.", ["depth"])
+            result = self.app.state.discover(str(body.get("path", "")), **depth_arg)
+            if result["errors"]:
+                return self._error(422, "validation_error",
+                                   "That path cannot be scanned.", result["errors"])
+            return self._json({"data": result})
+        if path == "/api/projects/discover/register":
+            body = self._body()
+            if body is None:
+                return
+            paths = body.get("paths")
+            if not isinstance(paths, list) or not paths:
+                return self._error(422, "validation_error",
+                                   "Send the paths to register.", ["paths_required"])
+            payload = self.app.state.register_many([str(entry) for entry in paths])
+            return self._json({"data": payload})
         if path == "/api/shutdown" and getattr(self.server, "allow_shutdown", False):
             self._json({"data": {"stopping": True}})
             threading.Thread(target=self.server.shutdown, daemon=True).start()

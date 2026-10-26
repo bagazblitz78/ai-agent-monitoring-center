@@ -13,6 +13,7 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 from pathlib import Path
 
+from app.api.discovery import install_discovery
 from app.api.file_changes import install_file_changes
 from app.api.health import router as health_router
 from app.api.inspect import install_inspect
@@ -155,6 +156,7 @@ def create_app() -> FastAPI:
     install_stream(app.state.api_router)
     install_inspect(app.state.api_router)
     install_projects(app.state.api_router)
+    install_discovery(app.state.api_router)
     install_file_changes(app.state.api_router)
     # The single mount of the guarded router — a second one would register
     # every API route twice and list each of them twice in OpenAPI.

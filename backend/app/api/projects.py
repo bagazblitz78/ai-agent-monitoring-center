@@ -64,6 +64,51 @@ def resource(project: Project) -> dict[str, Any]:
     }
 
 
+def build_project(
+    session: Session,
+    *,
+    name: str,
+    path: Path,
+    path_key: str,
+    watch_enabled: bool = True,
+    in_project_reporting: bool = False,
+) -> Project | None:
+    """Insert one project row for an already validated path.
+
+    Returns ``None`` when the path is taken — either a row already exists or a
+    concurrent registration won the race (``IntegrityError``). Callers decide
+    what "taken" means: :func:`create_project` answers **409**, the batch
+    registration route skips the path and carries on.
+    """
+    existing = session.execute(
+        select(Project.id).where(Project.path_key == path_key)
+    ).first()
+    if existing is not None:
+        return None
+
+    info = inspect_repo(path)
+    project = Project(
+        name=name,
+        path=str(path),
+        path_key=path_key,
+        is_git=info.is_git,
+        default_branch=info.default_branch,
+        current_branch=info.branch,
+        watch_enabled=watch_enabled,
+        in_project_reporting=in_project_reporting,
+    )
+    session.add(project)
+    try:
+        session.commit()
+    except IntegrityError:
+        # A concurrent registration of the same path_key loses the race here
+        # rather than blowing up with a 500.
+        session.rollback()
+        return None
+    session.refresh(project)
+    return project
+
+
 def create_project(payload: ProjectCreate, session: DbSession, request: Request) -> dict[str, Any]:
     """``POST /api/v1/projects`` — validate, inspect, then insert one row."""
     validation = validate_project_path(payload.path)
@@ -73,32 +118,18 @@ def create_project(payload: ProjectCreate, session: DbSession, request: Request)
         )
     assert validation.path is not None and validation.path_key is not None
 
-    existing = session.execute(
-        select(Project.id).where(Project.path_key == validation.path_key)
-    ).first()
-    if existing is not None:
-        raise Conflict(DUPLICATE_PATH_MESSAGE)
-
-    info = inspect_repo(validation.path)
-    project = Project(
+    project = build_project(
+        session,
         name=payload.name,
-        path=str(validation.path),
+        path=validation.path,
         path_key=validation.path_key,
-        is_git=info.is_git,
-        default_branch=info.default_branch,
-        current_branch=info.branch,
         watch_enabled=payload.watch_enabled,
         in_project_reporting=payload.in_project_reporting,
     )
-    session.add(project)
-    try:
-        session.commit()
-    except IntegrityError as exc:
-        # A concurrent registration of the same path_key loses the race here
-        # rather than blowing up with a 500.
-        session.rollback()
-        raise Conflict(DUPLICATE_PATH_MESSAGE) from exc
-    session.refresh(project)
+    if project is None:
+        # The path is already registered here: the single-register route keeps
+        # its documented 409, unlike the batch route, which skips instead.
+        raise Conflict(DUPLICATE_PATH_MESSAGE)
     # A brand-new registration must be watched right away, not on restart.
     refresh_project_monitors(request.app)
     return ok(resource(project))

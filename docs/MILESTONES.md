@@ -52,7 +52,7 @@ Depends on: M2.
 - [x] Path validation service (`realpath`, existence, readability, non-directory rejection, traversal rejection)
 - [ ] `POST /api/v1/projects/inspect` → exists? readable? git? branch? (no writes)
 - [ ] Project CRUD (create/list/get/patch/archive/delete = unregister only, files untouched)
-- [ ] Git service: branch, status counts, modified/untracked, last N commits, diff-on-demand
+- [x] Git service: branch, status counts, modified/untracked, last N commits, diff-on-demand
 - [ ] `GitMonitor` polling loop emitting `git.commit` events
 - [ ] `ProcessMonitor`: registered agent matchers → PID discovery, snapshots (cpu/mem/ppid/start time), redacted cmdline, ambiguous-match → `needs_confirmation`
 - [ ] `FileMonitor` (watchdog) with default exclude list, 500 ms debounce, event cap, escape-drop on symlink

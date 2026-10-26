@@ -80,16 +80,16 @@
   - `inspect_repo(path: Path, *, commits: int = 5) -> GitInfo` — `Repo(path, search_parent_directories=False)`; `repo.git.status --porcelain` parsed for counts/lists; branch via `repo.active_branch` (detached → `"HEAD detached"`); `default_branch` from `refs/remotes/origin/HEAD` if present else `None`; `list(repo.iter_commits(max_count=commits))` with file lists from `commit.stats.files` keys (cap 100 files/commit); every exception → `available=False, error=<sanitized short reason>` — **never raises**.
   - `commit_diff(path: Path, sha: str) -> list[str]` and `file_diff(path: Path, relpath: str, *, staged: bool = False) -> str` — read-only diff on demand; `file_diff` must reject `relpath` escaping the repo root (`..`, absolute) → `ValueError` (used by the M4+ diff endpoint, tested here).
   - `redact.py`: `redact_email(s: str) -> str` (`"b***@example.com"` style), `redact_cmdline(args: list[str]) -> str` (masks values that look like tokens/keys: flags named `--token/--key/--password/--secret/-p` and 20+ char opaque strings).
-- [ ] **Step 1: Failing tests** — fixture builds a temp repo **inside `tmp_path`** with repo-local identity (`repo.config_writer().set_value("user", "name", "Test") …` + `email`), commits 2 files, modifies one, leaves one untracked:
+- [x] **Step 1: Failing tests** — fixture builds a temp repo **inside `tmp_path`** with repo-local identity (`repo.config_writer().set_value("user", "name", "Test") …` + `email`), commits 2 files, modifies one, leaves one untracked:
   - `inspect_repo` → `is_git, available, branch` correct, `status_counts["modified"] == 1`, `untracked == 1`;
   - `last_commits` newest-first, sha/short_sha/subject match, email redacted (no raw `@` local-part),
   - plain dir → `is_git False, available False-ish but no exception`;
   - `file_diff` with `"../outside.txt"` and `"C:\\x"` → `ValueError`;
-  - git identity in effect for the test repo is **repo-local** (assert `repo.config_reader().getvalue("user","email")`), global config untouched.
-- [ ] **Step 2: Confirm failure.**
-- [ ] **Step 3: Implement** (read-only GitPython only: `Repo`, `repo.git.status`, `iter_commits`, `diff`; no `index.add`, no `commit`).
-- [ ] **Step 4: Tests + ruff PASS.**
-- [ ] **Step 5: Commit** — `feat: add read-only git inspection service`
+  - git identity in effect for the test repo is **repo-local** (assert `repo.config_reader().get_value("user","email")` — GitPython's real method name; the plan originally wrote `getvalue`), global config untouched.
+- [x] **Step 2: Confirm failure.**
+- [x] **Step 3: Implement** (read-only GitPython only: `Repo`, `repo.git.status`, `iter_commits`, `diff`; no `index.add`, no `commit`).
+- [x] **Step 4: Tests + ruff PASS.**
+- [x] **Step 5: Commit** — `feat: add read-only git inspection service`
 
 ---
 

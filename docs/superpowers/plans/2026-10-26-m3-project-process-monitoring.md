@@ -199,16 +199,16 @@
   - `class GitMonitor` with `__init__(self, session_factory, *, interval_s: float = 5.0, commits_per_poll: int = 10)`, `tick() -> None`, `start()/stop()`.
   - `tick()`: for every `Project` with `status != "archived"` and `is_git=True` (re-check `is_git_worktree` cheaply): `inspect_repo`; on `available=False` → `projects.status="unavailable"`, `persist_event(type="git.unavailable", severity="warning")` (deduped per project+reason) **and no exception**; on recovery → status back to `active` + `git.recovered` event.
   - New commits (sha not in `git_commits` for that project, newest-first insert) → `GitCommit` rows (`author_email_redacted`, `files_json`, `source="git_poll"`) + one `git.commit` activity event per new commit (payload: sha, subject, branch); `current_branch` updated when it changes (`git.branch_changed` event).
-- [ ] **Step 1: Failing tests** (temp git fixture from Task 2):
+- [x] **Step 1: Failing tests** (temp git fixture from Task 2):
   - first `tick()` seeds `git_commits` with the 2 pre-existing commits + emits `git.commit` events; second `tick()` without new commits → no new rows/events (idempotent);
   - new commit between ticks → exactly one new row + event;
   - non-git project → skipped silently (no rows, no crash);
   - `available=False` (delete `.git` after registration, or point at a locked/garbage dir) → `status="unavailable"` + event, no raise; restore `.git` → `active` + `git.recovered`;
   - archived project → not polled.
-- [ ] **Step 2: Confirm failure.**
-- [ ] **Step 3: Implement** (asyncio loop wrapper like ProcessMonitor; all GitPython access read-only).
-- [ ] **Step 4: Tests + ruff PASS.**
-- [ ] **Step 5: Commit** — `feat: add git monitor polling with commit capture`
+- [x] **Step 2: Confirm failure.**
+- [x] **Step 3: Implement** (asyncio loop wrapper like ProcessMonitor; all GitPython access read-only).
+- [x] **Step 4: Tests + ruff PASS.**
+- [x] **Step 5: Commit** — `feat: add git monitor polling with commit capture`
 
 ---
 

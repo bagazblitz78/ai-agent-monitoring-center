@@ -12,6 +12,8 @@ from __future__ import annotations
 import importlib.util
 import os
 import subprocess
+import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -23,6 +25,18 @@ _spec.loader.exec_module(lite)
 
 
 # -- fixtures ---------------------------------------------------------------
+
+def _link(source: Path, target: Path) -> bool:
+    """Directory link at ``target`` pointing at ``source`` (junction on Windows)."""
+    if os.name == "nt":
+        result = subprocess.run(["cmd", "/c", "mklink", "/J", str(target), str(source)],
+                                capture_output=True)
+        return result.returncode == 0 and target.exists()
+    try:
+        target.symlink_to(source, target_is_directory=True)
+    except OSError:
+        return False
+    return True
 
 def _git(path: Path) -> Path:
     """A minimal git repository at ``path`` (committed, so it is a real root)."""
@@ -201,6 +215,34 @@ def test_symlinks_are_not_followed(tmp_path):
     assert result["scanned"] == 1
 
 
+def test_a_directory_reachable_twice_is_proposed_once(tmp_path):
+    """A junction (or a second spelling of a path) must not duplicate a project."""
+    real = tmp_path / "real"
+    (real / ".claude").mkdir(parents=True)
+    if not _link(real, tmp_path / "link"):
+        pytest.skip("directory links are not permitted here")
+
+    result = lite.discover_candidates(str(tmp_path))
+
+    assert len(result["candidates"]) == 1, result["candidates"]
+    candidate = result["candidates"][0]
+    assert candidate["path"] == os.path.realpath(str(real))
+    assert candidate["name"] == "real"
+
+
+def test_a_cyclic_tree_does_not_re_walk_itself(tmp_path):
+    """A link back to an ancestor must not burn the walk's whole budget."""
+    (tmp_path / "plain").mkdir()
+    (tmp_path / "loop").mkdir()
+    if not _link(tmp_path, tmp_path / "loop" / "back"):
+        pytest.skip("directory links are not permitted here")
+
+    result = lite.discover_candidates(str(tmp_path), depth=10)
+
+    assert result["truncated"] is False, result
+    assert result["scanned"] == 3, result  # root, loop, plain — "back" is the root again
+
+
 def test_an_invalid_root_reports_the_same_errors_as_registration(tmp_path):
     missing = lite.discover_candidates(str(tmp_path / "nope"))
     relative = lite.discover_candidates("relative/path")
@@ -288,3 +330,29 @@ def test_main_discovers_before_it_serves(tmp_path, monkeypatch):
     assert code == 0
     assert seen.get("monitors") is True
     assert seen["served"] == ["alpha"]
+
+
+def test_the_startup_summary_survives_a_redirected_stdout(tmp_path):
+    """``--discover > log`` must show what happened while the server is running."""
+    _git(tmp_path / "alpha")
+    log = tmp_path / "startup.log"
+
+    with log.open("w", encoding="utf-8") as handle:
+        proc = subprocess.Popen(
+            [sys.executable, str(LITE_PATH), "--discover", str(tmp_path),
+             "--no-browser", "--port", "8799", "--data", str(tmp_path / "data.json")],
+            stdout=handle, stderr=subprocess.STDOUT,
+        )
+        try:
+            seen = ""
+            deadline = time.time() + 15
+            while time.time() < deadline and "registered" not in seen:
+                time.sleep(0.5)
+                try:
+                    seen = log.read_text(encoding="utf-8")
+                except OSError:
+                    pass
+            assert "registered" in seen, seen
+        finally:
+            proc.kill()
+            proc.wait(timeout=10)

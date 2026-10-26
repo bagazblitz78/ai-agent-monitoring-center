@@ -367,6 +367,7 @@ def discover_candidates(
 
     known = {os.path.realpath(str(path)) for path in (registered or [])}
     queue: list[tuple[Path, int]] = [(Path(out["root"]), 0)]
+    visited: set[str] = set()
     scanned = 0
 
     while queue:
@@ -374,6 +375,10 @@ def discover_candidates(
             out["truncated"] = True
             break
         directory, level = queue.pop(0)  # breadth first: shallow projects first
+        path = os.path.realpath(str(directory))
+        if path in visited:
+            continue  # reached another way (junction, case variant): one visit is enough
+        visited.add(path)
         scanned += 1
 
         reason = _candidate_reason(directory)
@@ -381,10 +386,9 @@ def discover_candidates(
             if len(out["candidates"]) >= max_candidates:
                 out["truncated"] = True
                 break
-            path = os.path.realpath(str(directory))
             out["candidates"].append({
                 "path": path,
-                "name": directory.name or path,
+                "name": Path(path).name or path,
                 "reason": reason,
                 "already_registered": path in known,
             })
@@ -1847,6 +1851,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
+    # a redirected console (log file, supervisor) must still show what the
+    # monitor is doing while it runs, not only after a clean exit
+    if sys.stdout is not None and hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(line_buffering=True)
     data_file = Path(args.data).expanduser() if args.data else DATA_FILE
 
     app = LiteApp(data_file, matchers=args.match or None)
